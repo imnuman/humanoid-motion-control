@@ -1,0 +1,575 @@
+<!--
+  Boston Dynamics Atlas 2026 - MuJoCo Model
+  56 DOF Fully Rotational Humanoid Robot
+  Based on CES 2026 announcement specifications
+
+  Author: Al Numan
+-->
+<mujoco model="atlas_2026">
+  <compiler angle="radian" meshdir="meshes/" autolimits="true"/>
+
+  <option timestep="0.0005" iterations="50" solver="Newton" gravity="0 0 -9.81">
+    <flag warmstart="enable"/>
+  </option>
+
+  <size nconmax="100" njmax="500"/>
+
+  <default>
+    <joint armature="0.01" damping="1" limited="true"/>
+    <geom condim="4" friction="0.8 0.02 0.01" margin="0.001"/>
+    <motor ctrllimited="true"/>
+    <position kp="100" kv="10"/>
+
+    <!-- Default classes for different body parts -->
+    <default class="hip">
+      <joint damping="8.0" armature="0.1"/>
+      <geom friction="0.8 0.02 0.01"/>
+    </default>
+
+    <default class="knee">
+      <joint damping="10.0" armature="0.08"/>
+    </default>
+
+    <default class="ankle">
+      <joint damping="5.0" armature="0.05"/>
+    </default>
+
+    <default class="torso">
+      <joint damping="5.0" armature="0.1"/>
+    </default>
+
+    <default class="arm">
+      <joint damping="4.0" armature="0.05"/>
+    </default>
+
+    <default class="wrist">
+      <joint damping="2.0" armature="0.02"/>
+    </default>
+
+    <default class="hand">
+      <joint damping="0.5" armature="0.005"/>
+    </default>
+
+    <default class="neck">
+      <joint damping="1.0" armature="0.02"/>
+    </default>
+  </default>
+
+  <asset>
+    <texture type="skybox" builtin="gradient" rgb1="0.3 0.5 0.7" rgb2="0 0 0" width="512" height="512"/>
+    <texture name="floor_tex" type="2d" builtin="checker" rgb1="0.2 0.2 0.2" rgb2="0.3 0.3 0.3" width="512" height="512"/>
+    <material name="floor_mat" texture="floor_tex" texrepeat="20 20" reflectance="0.1"/>
+    <material name="atlas_dark" rgba="0.2 0.2 0.2 1"/>
+    <material name="atlas_light" rgba="0.6 0.6 0.6 1"/>
+    <material name="atlas_orange" rgba="1.0 0.4 0.0 1"/>
+    <material name="atlas_white" rgba="0.9 0.9 0.9 1"/>
+  </asset>
+
+  <worldbody>
+    <!-- Ground plane -->
+    <geom name="floor" type="plane" size="50 50 0.1" material="floor_mat" condim="4"/>
+
+    <!-- ============================================================= -->
+    <!-- PELVIS (Base Link) -->
+    <!-- ============================================================= -->
+    <body name="pelvis" pos="0 0 1.1">
+      <freejoint name="root"/>
+      <inertial pos="0 0 0" mass="15.0" diaginertia="0.3 0.35 0.25"/>
+      <geom name="pelvis_geom" type="box" size="0.14 0.16 0.10" material="atlas_dark"/>
+      <site name="imu_site" pos="0 0 0.05"/>
+
+      <!-- ============================================================= -->
+      <!-- TORSO/SPINE - Lower Spine (Waist) -->
+      <!-- ============================================================= -->
+      <body name="waist_yaw_link" pos="0 0 0.12">
+        <joint name="waist_yaw" class="torso" type="hinge" axis="0 0 1" range="-1.57 1.57"/>
+        <inertial pos="0 0 0" mass="2.0" diaginertia="0.01 0.01 0.01"/>
+        <geom type="cylinder" size="0.08 0.03" material="atlas_light"/>
+
+        <body name="waist_pitch_link" pos="0 0 0.04">
+          <joint name="waist_pitch" class="torso" type="hinge" axis="0 1 0" range="-0.52 0.70"/>
+          <inertial pos="0 0 0" mass="2.0" diaginertia="0.01 0.01 0.01"/>
+          <geom type="cylinder" size="0.08 0.03" material="atlas_light"/>
+
+          <body name="torso_link" pos="0 0 0.04">
+            <joint name="waist_roll" class="torso" type="hinge" axis="1 0 0" range="-0.44 0.44"/>
+            <inertial pos="0 0 0.15" mass="18.0" diaginertia="0.6 0.7 0.5"/>
+            <geom type="box" size="0.15 0.20 0.15" pos="0 0 0.15" material="atlas_dark"/>
+
+            <!-- ============================================================= -->
+            <!-- TORSO/SPINE - Upper Spine (Chest) -->
+            <!-- ============================================================= -->
+            <body name="chest_yaw_link" pos="0 0 0.32">
+              <joint name="chest_yaw" class="torso" type="hinge" axis="0 0 1" range="-1.05 1.05"/>
+              <inertial pos="0 0 0" mass="2.5" diaginertia="0.015 0.015 0.02"/>
+              <geom type="cylinder" size="0.10 0.03" material="atlas_light"/>
+
+              <body name="chest_pitch_link" pos="0 0 0.04">
+                <joint name="chest_pitch" class="torso" type="hinge" axis="0 1 0" range="-0.35 0.52"/>
+                <inertial pos="0 0 0" mass="2.5" diaginertia="0.015 0.015 0.02"/>
+                <geom type="cylinder" size="0.10 0.03" material="atlas_light"/>
+
+                <body name="chest_link" pos="0 0 0.04">
+                  <joint name="chest_roll" class="torso" type="hinge" axis="1 0 0" range="-0.35 0.35"/>
+                  <inertial pos="0 0 0.125" mass="12.0" diaginertia="0.4 0.5 0.35"/>
+                  <geom type="box" size="0.16 0.26 0.125" pos="0 0 0.125" material="atlas_dark"/>
+
+                  <!-- ============================================================= -->
+                  <!-- HEAD/NECK (3 DOF) -->
+                  <!-- ============================================================= -->
+                  <body name="neck_yaw_link" pos="0 0 0.28">
+                    <joint name="neck_yaw" class="neck" type="hinge" axis="0 0 1" range="-1.57 1.57"/>
+                    <inertial pos="0 0 0" mass="0.5" diaginertia="0.001 0.001 0.001"/>
+                    <geom type="cylinder" size="0.05 0.02" material="atlas_light"/>
+
+                    <body name="neck_pitch_link" pos="0 0 0.03">
+                      <joint name="neck_pitch" class="neck" type="hinge" axis="0 1 0" range="-0.70 0.87"/>
+                      <inertial pos="0 0 0" mass="0.5" diaginertia="0.001 0.001 0.001"/>
+                      <geom type="cylinder" size="0.05 0.02" material="atlas_light"/>
+
+                      <body name="head_link" pos="0 0 0.03">
+                        <joint name="neck_roll" class="neck" type="hinge" axis="1 0 0" range="-0.52 0.52"/>
+                        <inertial pos="0 0 0.11" mass="3.0" diaginertia="0.02 0.02 0.015"/>
+                        <geom type="box" size="0.09 0.08 0.11" pos="0 0 0.11" material="atlas_white"/>
+                        <site name="head_site" pos="0 0 0.18"/>
+                      </body>
+                    </body>
+                  </body>
+
+                  <!-- ============================================================= -->
+                  <!-- LEFT ARM (8 DOF) -->
+                  <!-- ============================================================= -->
+                  <body name="l_shoulder_pitch_link" pos="0 0.28 0.18">
+                    <joint name="l_shoulder_pitch" class="arm" type="hinge" axis="0 1 0" range="-3.14 3.14"/>
+                    <inertial pos="0 0 0" mass="1.5" diaginertia="0.005 0.005 0.005"/>
+                    <geom type="sphere" size="0.06" material="atlas_light"/>
+
+                    <body name="l_shoulder_roll_link" pos="0 0.04 0">
+                      <joint name="l_shoulder_roll" class="arm" type="hinge" axis="1 0 0" range="-0.35 3.14"/>
+                      <inertial pos="0 0 0" mass="1.2" diaginertia="0.003 0.003 0.003"/>
+                      <geom type="cylinder" size="0.05 0.04" euler="1.5708 0 0" material="atlas_light"/>
+
+                      <body name="l_upper_arm_link" pos="0 0.05 0">
+                        <joint name="l_shoulder_yaw" class="arm" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                        <inertial pos="0 0 -0.15" mass="2.5" diaginertia="0.025 0.025 0.008"/>
+                        <geom type="box" size="0.04 0.04 0.15" pos="0 0 -0.15" material="atlas_dark"/>
+
+                        <body name="l_elbow_pitch_link" pos="0 0 -0.32">
+                          <joint name="l_elbow_pitch" class="arm" type="hinge" axis="0 1 0" range="-2.79 0.0"/>
+                          <inertial pos="0 0 0" mass="1.0" diaginertia="0.002 0.002 0.002"/>
+                          <geom type="cylinder" size="0.045 0.04" euler="1.5708 0 0" material="atlas_orange"/>
+
+                          <body name="l_forearm_link" pos="0 0 -0.02">
+                            <joint name="l_elbow_roll" class="arm" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                            <inertial pos="0 0 -0.13" mass="1.8" diaginertia="0.015 0.015 0.005"/>
+                            <geom type="box" size="0.035 0.035 0.13" pos="0 0 -0.13" material="atlas_dark"/>
+
+                            <body name="l_wrist_yaw_link" pos="0 0 -0.28">
+                              <joint name="l_wrist_yaw" class="wrist" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                              <inertial pos="0 0 0" mass="0.4" diaginertia="0.0005 0.0005 0.0005"/>
+                              <geom type="cylinder" size="0.035 0.02" material="atlas_light"/>
+
+                              <body name="l_wrist_pitch_link" pos="0 0 -0.02">
+                                <joint name="l_wrist_pitch" class="wrist" type="hinge" axis="0 1 0" range="-1.22 1.22"/>
+                                <inertial pos="0 0 0" mass="0.3" diaginertia="0.0003 0.0003 0.0003"/>
+                                <geom type="cylinder" size="0.03 0.015" euler="1.5708 0 0" material="atlas_light"/>
+
+                                <body name="l_hand_link" pos="0 0 -0.02">
+                                  <joint name="l_wrist_roll" class="wrist" type="hinge" axis="1 0 0" range="-3.14 3.14"/>
+                                  <inertial pos="0 0 -0.06" mass="0.8" diaginertia="0.002 0.002 0.001"/>
+                                  <geom type="box" size="0.04 0.05 0.06" pos="0 0 -0.06" material="atlas_white"/>
+                                  <site name="l_hand_site" pos="0 0 -0.12"/>
+
+                                  <!-- Left hand fingers (simplified) -->
+                                  <body name="l_thumb_base_link" pos="0.03 0.04 -0.10" euler="0 0 0.5">
+                                    <joint name="l_thumb_base" class="hand" type="hinge" axis="0 0 1" range="0 1.57"/>
+                                    <geom type="capsule" size="0.012 0.015" pos="0 0 -0.015" material="atlas_white"/>
+                                    <body name="l_thumb_tip_link" pos="0 0 -0.035">
+                                      <joint name="l_thumb_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.40"/>
+                                      <geom type="capsule" size="0.010 0.0125" pos="0 0 -0.0125" material="atlas_white"/>
+                                    </body>
+                                  </body>
+
+                                  <body name="l_index_link" pos="0.02 0.035 -0.12">
+                                    <joint name="l_index_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.010 0.03" pos="0 0 -0.03" material="atlas_white"/>
+                                  </body>
+
+                                  <body name="l_middle_link" pos="0 0.012 -0.12">
+                                    <joint name="l_middle_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.010 0.0325" pos="0 0 -0.0325" material="atlas_white"/>
+                                  </body>
+
+                                  <body name="l_ring_link" pos="0 -0.012 -0.12">
+                                    <joint name="l_ring_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.010 0.029" pos="0 0 -0.029" material="atlas_white"/>
+                                  </body>
+
+                                  <body name="l_pinky_link" pos="-0.02 -0.035 -0.12">
+                                    <joint name="l_pinky_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.008 0.025" pos="0 0 -0.025" material="atlas_white"/>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+
+                  <!-- ============================================================= -->
+                  <!-- RIGHT ARM (8 DOF) -->
+                  <!-- ============================================================= -->
+                  <body name="r_shoulder_pitch_link" pos="0 -0.28 0.18">
+                    <joint name="r_shoulder_pitch" class="arm" type="hinge" axis="0 1 0" range="-3.14 3.14"/>
+                    <inertial pos="0 0 0" mass="1.5" diaginertia="0.005 0.005 0.005"/>
+                    <geom type="sphere" size="0.06" material="atlas_light"/>
+
+                    <body name="r_shoulder_roll_link" pos="0 -0.04 0">
+                      <joint name="r_shoulder_roll" class="arm" type="hinge" axis="1 0 0" range="-3.14 0.35"/>
+                      <inertial pos="0 0 0" mass="1.2" diaginertia="0.003 0.003 0.003"/>
+                      <geom type="cylinder" size="0.05 0.04" euler="1.5708 0 0" material="atlas_light"/>
+
+                      <body name="r_upper_arm_link" pos="0 -0.05 0">
+                        <joint name="r_shoulder_yaw" class="arm" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                        <inertial pos="0 0 -0.15" mass="2.5" diaginertia="0.025 0.025 0.008"/>
+                        <geom type="box" size="0.04 0.04 0.15" pos="0 0 -0.15" material="atlas_dark"/>
+
+                        <body name="r_elbow_pitch_link" pos="0 0 -0.32">
+                          <joint name="r_elbow_pitch" class="arm" type="hinge" axis="0 1 0" range="-2.79 0.0"/>
+                          <inertial pos="0 0 0" mass="1.0" diaginertia="0.002 0.002 0.002"/>
+                          <geom type="cylinder" size="0.045 0.04" euler="1.5708 0 0" material="atlas_orange"/>
+
+                          <body name="r_forearm_link" pos="0 0 -0.02">
+                            <joint name="r_elbow_roll" class="arm" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                            <inertial pos="0 0 -0.13" mass="1.8" diaginertia="0.015 0.015 0.005"/>
+                            <geom type="box" size="0.035 0.035 0.13" pos="0 0 -0.13" material="atlas_dark"/>
+
+                            <body name="r_wrist_yaw_link" pos="0 0 -0.28">
+                              <joint name="r_wrist_yaw" class="wrist" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+                              <inertial pos="0 0 0" mass="0.4" diaginertia="0.0005 0.0005 0.0005"/>
+                              <geom type="cylinder" size="0.035 0.02" material="atlas_light"/>
+
+                              <body name="r_wrist_pitch_link" pos="0 0 -0.02">
+                                <joint name="r_wrist_pitch" class="wrist" type="hinge" axis="0 1 0" range="-1.22 1.22"/>
+                                <inertial pos="0 0 0" mass="0.3" diaginertia="0.0003 0.0003 0.0003"/>
+                                <geom type="cylinder" size="0.03 0.015" euler="1.5708 0 0" material="atlas_light"/>
+
+                                <body name="r_hand_link" pos="0 0 -0.02">
+                                  <joint name="r_wrist_roll" class="wrist" type="hinge" axis="1 0 0" range="-3.14 3.14"/>
+                                  <inertial pos="0 0 -0.06" mass="0.8" diaginertia="0.002 0.002 0.001"/>
+                                  <geom type="box" size="0.04 0.05 0.06" pos="0 0 -0.06" material="atlas_white"/>
+                                  <site name="r_hand_site" pos="0 0 -0.12"/>
+
+                                  <!-- Right hand fingers (8 DOF - asymmetric) -->
+                                  <body name="r_thumb_base_link" pos="0.03 -0.04 -0.10" euler="0 0 -0.5">
+                                    <joint name="r_thumb_base" class="hand" type="hinge" axis="0 0 1" range="0 1.57"/>
+                                    <geom type="capsule" size="0.012 0.015" pos="0 0 -0.015" material="atlas_white"/>
+                                    <body name="r_thumb_mid_link" pos="0 0 -0.035">
+                                      <joint name="r_thumb_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.40"/>
+                                      <geom type="capsule" size="0.010 0.0125" pos="0 0 -0.0125" material="atlas_white"/>
+                                      <body name="r_thumb_tip_link" pos="0 0 -0.028">
+                                        <joint name="r_thumb_tip" class="hand" type="hinge" axis="0 1 0" range="0 1.22"/>
+                                        <geom type="capsule" size="0.008 0.01" pos="0 0 -0.01" material="atlas_white"/>
+                                      </body>
+                                    </body>
+                                  </body>
+
+                                  <body name="r_index_link" pos="0.02 -0.035 -0.12">
+                                    <joint name="r_index_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.010 0.03" pos="0 0 -0.03" material="atlas_white"/>
+                                  </body>
+
+                                  <body name="r_middle_link" pos="0 -0.012 -0.12">
+                                    <joint name="r_middle_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.010 0.0325" pos="0 0 -0.0325" material="atlas_white"/>
+                                  </body>
+
+                                  <body name="r_ring_link" pos="0 0.012 -0.12">
+                                    <joint name="r_ring_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.010 0.029" pos="0 0 -0.029" material="atlas_white"/>
+                                  </body>
+
+                                  <body name="r_pinky_link" pos="-0.02 0.035 -0.12">
+                                    <joint name="r_pinky_flex" class="hand" type="hinge" axis="0 1 0" range="0 1.74"/>
+                                    <geom type="capsule" size="0.008 0.025" pos="0 0 -0.025" material="atlas_white"/>
+                                  </body>
+                                </body>
+                              </body>
+                            </body>
+                          </body>
+                        </body>
+                      </body>
+                    </body>
+                  </body>
+
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ============================================================= -->
+      <!-- LEFT LEG (8 DOF) -->
+      <!-- ============================================================= -->
+      <body name="l_hip_yaw_link" pos="0 0.16 -0.10">
+        <joint name="l_hip_yaw" class="hip" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+        <inertial pos="0 0 0" mass="2.0" diaginertia="0.01 0.01 0.008"/>
+        <geom type="cylinder" size="0.06 0.04" material="atlas_light"/>
+
+        <body name="l_hip_roll_link" pos="0 0 -0.05">
+          <joint name="l_hip_roll" class="hip" type="hinge" axis="1 0 0" range="-0.70 0.70"/>
+          <inertial pos="0 0 0" mass="2.0" diaginertia="0.01 0.008 0.01"/>
+          <geom type="cylinder" size="0.06 0.04" euler="1.5708 0 0" material="atlas_light"/>
+
+          <body name="l_thigh_link" pos="0 0 -0.05">
+            <joint name="l_hip_pitch" class="hip" type="hinge" axis="0 1 0" range="-1.74 0.87"/>
+            <inertial pos="0 0 -0.20" mass="6.0" diaginertia="0.12 0.12 0.03"/>
+            <geom type="box" size="0.05 0.06 0.20" pos="0 0 -0.20" material="atlas_dark"/>
+
+            <body name="l_knee_pitch_link" pos="0 0 -0.42">
+              <joint name="l_knee_pitch" class="knee" type="hinge" axis="0 1 0" range="0.0 2.62"/>
+              <inertial pos="0 0 0" mass="2.5" diaginertia="0.015 0.01 0.015"/>
+              <geom type="cylinder" size="0.06 0.05" euler="1.5708 0 0" material="atlas_orange"/>
+
+              <body name="l_shank_link" pos="0 0 -0.02">
+                <joint name="l_knee_roll" class="knee" type="hinge" axis="1 0 0" range="-0.26 0.26"/>
+                <inertial pos="0 0 -0.19" mass="4.5" diaginertia="0.08 0.08 0.02"/>
+                <geom type="box" size="0.045 0.05 0.19" pos="0 0 -0.19" material="atlas_dark"/>
+
+                <body name="l_ankle_pitch_link" pos="0 0 -0.40">
+                  <joint name="l_ankle_pitch" class="ankle" type="hinge" axis="0 1 0" range="-1.05 0.70"/>
+                  <inertial pos="0 0 0" mass="1.5" diaginertia="0.005 0.004 0.005"/>
+                  <geom type="cylinder" size="0.05 0.03" euler="1.5708 0 0" material="atlas_light"/>
+
+                  <body name="l_ankle_roll_link" pos="0 0 0">
+                    <joint name="l_ankle_roll" class="ankle" type="hinge" axis="1 0 0" range="-0.44 0.44"/>
+                    <inertial pos="0 0 0" mass="1.0" diaginertia="0.002 0.002 0.002"/>
+                    <geom type="cylinder" size="0.04 0.02" material="atlas_light"/>
+
+                    <body name="l_foot_link" pos="0 0 -0.03">
+                      <joint name="l_ankle_yaw" class="ankle" type="hinge" axis="0 0 1" range="-0.52 0.52"/>
+                      <inertial pos="0.05 0 -0.025" mass="1.5" diaginertia="0.003 0.01 0.01"/>
+                      <geom type="box" size="0.14 0.06 0.025" pos="0.05 0 -0.025" material="atlas_orange"/>
+                      <site name="l_foot_site" pos="0.05 0 -0.05"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+      <!-- ============================================================= -->
+      <!-- RIGHT LEG (8 DOF) -->
+      <!-- ============================================================= -->
+      <body name="r_hip_yaw_link" pos="0 -0.16 -0.10">
+        <joint name="r_hip_yaw" class="hip" type="hinge" axis="0 0 1" range="-3.14 3.14"/>
+        <inertial pos="0 0 0" mass="2.0" diaginertia="0.01 0.01 0.008"/>
+        <geom type="cylinder" size="0.06 0.04" material="atlas_light"/>
+
+        <body name="r_hip_roll_link" pos="0 0 -0.05">
+          <joint name="r_hip_roll" class="hip" type="hinge" axis="1 0 0" range="-0.70 0.70"/>
+          <inertial pos="0 0 0" mass="2.0" diaginertia="0.01 0.008 0.01"/>
+          <geom type="cylinder" size="0.06 0.04" euler="1.5708 0 0" material="atlas_light"/>
+
+          <body name="r_thigh_link" pos="0 0 -0.05">
+            <joint name="r_hip_pitch" class="hip" type="hinge" axis="0 1 0" range="-1.74 0.87"/>
+            <inertial pos="0 0 -0.20" mass="6.0" diaginertia="0.12 0.12 0.03"/>
+            <geom type="box" size="0.05 0.06 0.20" pos="0 0 -0.20" material="atlas_dark"/>
+
+            <body name="r_knee_pitch_link" pos="0 0 -0.42">
+              <joint name="r_knee_pitch" class="knee" type="hinge" axis="0 1 0" range="0.0 2.62"/>
+              <inertial pos="0 0 0" mass="2.5" diaginertia="0.015 0.01 0.015"/>
+              <geom type="cylinder" size="0.06 0.05" euler="1.5708 0 0" material="atlas_orange"/>
+
+              <body name="r_shank_link" pos="0 0 -0.02">
+                <joint name="r_knee_roll" class="knee" type="hinge" axis="1 0 0" range="-0.26 0.26"/>
+                <inertial pos="0 0 -0.19" mass="4.5" diaginertia="0.08 0.08 0.02"/>
+                <geom type="box" size="0.045 0.05 0.19" pos="0 0 -0.19" material="atlas_dark"/>
+
+                <body name="r_ankle_pitch_link" pos="0 0 -0.40">
+                  <joint name="r_ankle_pitch" class="ankle" type="hinge" axis="0 1 0" range="-1.05 0.70"/>
+                  <inertial pos="0 0 0" mass="1.5" diaginertia="0.005 0.004 0.005"/>
+                  <geom type="cylinder" size="0.05 0.03" euler="1.5708 0 0" material="atlas_light"/>
+
+                  <body name="r_ankle_roll_link" pos="0 0 0">
+                    <joint name="r_ankle_roll" class="ankle" type="hinge" axis="1 0 0" range="-0.44 0.44"/>
+                    <inertial pos="0 0 0" mass="1.0" diaginertia="0.002 0.002 0.002"/>
+                    <geom type="cylinder" size="0.04 0.02" material="atlas_light"/>
+
+                    <body name="r_foot_link" pos="0 0 -0.03">
+                      <joint name="r_ankle_yaw" class="ankle" type="hinge" axis="0 0 1" range="-0.52 0.52"/>
+                      <inertial pos="0.05 0 -0.025" mass="1.5" diaginertia="0.003 0.01 0.01"/>
+                      <geom type="box" size="0.14 0.06 0.025" pos="0.05 0 -0.025" material="atlas_orange"/>
+                      <site name="r_foot_site" pos="0.05 0 -0.05"/>
+                    </body>
+                  </body>
+                </body>
+              </body>
+            </body>
+          </body>
+        </body>
+      </body>
+
+    </body>
+  </worldbody>
+
+  <!-- ============================================================= -->
+  <!-- ACTUATORS - 56 DOF Total -->
+  <!-- ============================================================= -->
+  <actuator>
+    <!-- Torso actuators (6 DOF) -->
+    <motor name="waist_yaw_motor" joint="waist_yaw" gear="400" ctrlrange="-1 1"/>
+    <motor name="waist_pitch_motor" joint="waist_pitch" gear="400" ctrlrange="-1 1"/>
+    <motor name="waist_roll_motor" joint="waist_roll" gear="400" ctrlrange="-1 1"/>
+    <motor name="chest_yaw_motor" joint="chest_yaw" gear="300" ctrlrange="-1 1"/>
+    <motor name="chest_pitch_motor" joint="chest_pitch" gear="300" ctrlrange="-1 1"/>
+    <motor name="chest_roll_motor" joint="chest_roll" gear="300" ctrlrange="-1 1"/>
+
+    <!-- Head actuators (3 DOF) -->
+    <motor name="neck_yaw_motor" joint="neck_yaw" gear="30" ctrlrange="-1 1"/>
+    <motor name="neck_pitch_motor" joint="neck_pitch" gear="30" ctrlrange="-1 1"/>
+    <motor name="neck_roll_motor" joint="neck_roll" gear="30" ctrlrange="-1 1"/>
+
+    <!-- Left arm actuators (8 DOF) -->
+    <motor name="l_shoulder_pitch_motor" joint="l_shoulder_pitch" gear="200" ctrlrange="-1 1"/>
+    <motor name="l_shoulder_roll_motor" joint="l_shoulder_roll" gear="200" ctrlrange="-1 1"/>
+    <motor name="l_shoulder_yaw_motor" joint="l_shoulder_yaw" gear="150" ctrlrange="-1 1"/>
+    <motor name="l_elbow_pitch_motor" joint="l_elbow_pitch" gear="100" ctrlrange="-1 1"/>
+    <motor name="l_elbow_roll_motor" joint="l_elbow_roll" gear="100" ctrlrange="-1 1"/>
+    <motor name="l_wrist_yaw_motor" joint="l_wrist_yaw" gear="50" ctrlrange="-1 1"/>
+    <motor name="l_wrist_pitch_motor" joint="l_wrist_pitch" gear="50" ctrlrange="-1 1"/>
+    <motor name="l_wrist_roll_motor" joint="l_wrist_roll" gear="50" ctrlrange="-1 1"/>
+
+    <!-- Left hand actuators (7 DOF) -->
+    <motor name="l_thumb_base_motor" joint="l_thumb_base" gear="20" ctrlrange="-1 1"/>
+    <motor name="l_thumb_flex_motor" joint="l_thumb_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="l_index_flex_motor" joint="l_index_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="l_middle_flex_motor" joint="l_middle_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="l_ring_flex_motor" joint="l_ring_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="l_pinky_flex_motor" joint="l_pinky_flex" gear="20" ctrlrange="-1 1"/>
+
+    <!-- Right arm actuators (8 DOF) -->
+    <motor name="r_shoulder_pitch_motor" joint="r_shoulder_pitch" gear="200" ctrlrange="-1 1"/>
+    <motor name="r_shoulder_roll_motor" joint="r_shoulder_roll" gear="200" ctrlrange="-1 1"/>
+    <motor name="r_shoulder_yaw_motor" joint="r_shoulder_yaw" gear="150" ctrlrange="-1 1"/>
+    <motor name="r_elbow_pitch_motor" joint="r_elbow_pitch" gear="100" ctrlrange="-1 1"/>
+    <motor name="r_elbow_roll_motor" joint="r_elbow_roll" gear="100" ctrlrange="-1 1"/>
+    <motor name="r_wrist_yaw_motor" joint="r_wrist_yaw" gear="50" ctrlrange="-1 1"/>
+    <motor name="r_wrist_pitch_motor" joint="r_wrist_pitch" gear="50" ctrlrange="-1 1"/>
+    <motor name="r_wrist_roll_motor" joint="r_wrist_roll" gear="50" ctrlrange="-1 1"/>
+
+    <!-- Right hand actuators (8 DOF) -->
+    <motor name="r_thumb_base_motor" joint="r_thumb_base" gear="20" ctrlrange="-1 1"/>
+    <motor name="r_thumb_flex_motor" joint="r_thumb_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="r_thumb_tip_motor" joint="r_thumb_tip" gear="15" ctrlrange="-1 1"/>
+    <motor name="r_index_flex_motor" joint="r_index_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="r_middle_flex_motor" joint="r_middle_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="r_ring_flex_motor" joint="r_ring_flex" gear="20" ctrlrange="-1 1"/>
+    <motor name="r_pinky_flex_motor" joint="r_pinky_flex" gear="20" ctrlrange="-1 1"/>
+
+    <!-- Left leg actuators (8 DOF) -->
+    <motor name="l_hip_yaw_motor" joint="l_hip_yaw" gear="350" ctrlrange="-1 1"/>
+    <motor name="l_hip_roll_motor" joint="l_hip_roll" gear="350" ctrlrange="-1 1"/>
+    <motor name="l_hip_pitch_motor" joint="l_hip_pitch" gear="450" ctrlrange="-1 1"/>
+    <motor name="l_knee_pitch_motor" joint="l_knee_pitch" gear="500" ctrlrange="-1 1"/>
+    <motor name="l_knee_roll_motor" joint="l_knee_roll" gear="150" ctrlrange="-1 1"/>
+    <motor name="l_ankle_pitch_motor" joint="l_ankle_pitch" gear="200" ctrlrange="-1 1"/>
+    <motor name="l_ankle_roll_motor" joint="l_ankle_roll" gear="150" ctrlrange="-1 1"/>
+    <motor name="l_ankle_yaw_motor" joint="l_ankle_yaw" gear="100" ctrlrange="-1 1"/>
+
+    <!-- Right leg actuators (8 DOF) -->
+    <motor name="r_hip_yaw_motor" joint="r_hip_yaw" gear="350" ctrlrange="-1 1"/>
+    <motor name="r_hip_roll_motor" joint="r_hip_roll" gear="350" ctrlrange="-1 1"/>
+    <motor name="r_hip_pitch_motor" joint="r_hip_pitch" gear="450" ctrlrange="-1 1"/>
+    <motor name="r_knee_pitch_motor" joint="r_knee_pitch" gear="500" ctrlrange="-1 1"/>
+    <motor name="r_knee_roll_motor" joint="r_knee_roll" gear="150" ctrlrange="-1 1"/>
+    <motor name="r_ankle_pitch_motor" joint="r_ankle_pitch" gear="200" ctrlrange="-1 1"/>
+    <motor name="r_ankle_roll_motor" joint="r_ankle_roll" gear="150" ctrlrange="-1 1"/>
+    <motor name="r_ankle_yaw_motor" joint="r_ankle_yaw" gear="100" ctrlrange="-1 1"/>
+  </actuator>
+
+  <!-- ============================================================= -->
+  <!-- SENSORS -->
+  <!-- ============================================================= -->
+  <sensor>
+    <!-- IMU sensors -->
+    <accelerometer name="imu_acc" site="imu_site"/>
+    <gyro name="imu_gyro" site="imu_site"/>
+    <framequat name="imu_quat" objtype="site" objname="imu_site"/>
+
+    <!-- Contact sensors -->
+    <touch name="l_foot_touch" site="l_foot_site"/>
+    <touch name="r_foot_touch" site="r_foot_site"/>
+
+    <!-- Hand sensors -->
+    <touch name="l_hand_touch" site="l_hand_site"/>
+    <touch name="r_hand_touch" site="r_hand_site"/>
+
+    <!-- Joint position sensors -->
+    <jointpos name="waist_yaw_pos" joint="waist_yaw"/>
+    <jointpos name="waist_pitch_pos" joint="waist_pitch"/>
+    <jointpos name="waist_roll_pos" joint="waist_roll"/>
+    <jointpos name="chest_yaw_pos" joint="chest_yaw"/>
+    <jointpos name="chest_pitch_pos" joint="chest_pitch"/>
+    <jointpos name="chest_roll_pos" joint="chest_roll"/>
+
+    <jointpos name="l_hip_yaw_pos" joint="l_hip_yaw"/>
+    <jointpos name="l_hip_roll_pos" joint="l_hip_roll"/>
+    <jointpos name="l_hip_pitch_pos" joint="l_hip_pitch"/>
+    <jointpos name="l_knee_pitch_pos" joint="l_knee_pitch"/>
+    <jointpos name="l_knee_roll_pos" joint="l_knee_roll"/>
+    <jointpos name="l_ankle_pitch_pos" joint="l_ankle_pitch"/>
+    <jointpos name="l_ankle_roll_pos" joint="l_ankle_roll"/>
+    <jointpos name="l_ankle_yaw_pos" joint="l_ankle_yaw"/>
+
+    <jointpos name="r_hip_yaw_pos" joint="r_hip_yaw"/>
+    <jointpos name="r_hip_roll_pos" joint="r_hip_roll"/>
+    <jointpos name="r_hip_pitch_pos" joint="r_hip_pitch"/>
+    <jointpos name="r_knee_pitch_pos" joint="r_knee_pitch"/>
+    <jointpos name="r_knee_roll_pos" joint="r_knee_roll"/>
+    <jointpos name="r_ankle_pitch_pos" joint="r_ankle_pitch"/>
+    <jointpos name="r_ankle_roll_pos" joint="r_ankle_roll"/>
+    <jointpos name="r_ankle_yaw_pos" joint="r_ankle_yaw"/>
+
+    <!-- Joint velocity sensors -->
+    <jointvel name="l_hip_pitch_vel" joint="l_hip_pitch"/>
+    <jointvel name="l_knee_pitch_vel" joint="l_knee_pitch"/>
+    <jointvel name="r_hip_pitch_vel" joint="r_hip_pitch"/>
+    <jointvel name="r_knee_pitch_vel" joint="r_knee_pitch"/>
+  </sensor>
+
+  <!-- ============================================================= -->
+  <!-- KEYFRAMES - Default Poses -->
+  <!-- ============================================================= -->
+  <keyframe>
+    <key name="standing" qpos="0 0 1.1 1 0 0 0
+      0 0 0 0 0 0
+      0 0 0
+      0 0 0 0 0 0 0 0 0 0 0 0 0 0
+      0 0 0 0 0 0 0 0 0 0 0 0 0 0 0
+      0 -0.4 0.8 0 -0.4 0 0 0
+      0 -0.4 0.8 0 -0.4 0 0 0"/>
+
+    <key name="crouch" qpos="0 0 0.85 1 0 0 0
+      0 0.1 0 0 0 0
+      0 0.1 0
+      0.2 0.3 0 -1.0 0 0 0 0 0 0 0 0 0 0
+      0.2 -0.3 0 -1.0 0 0 0 0 0 0 0 0 0 0 0
+      0 -0.8 1.4 0 -0.6 0 0 0
+      0 -0.8 1.4 0 -0.6 0 0 0"/>
+
+    <key name="arms_up" qpos="0 0 1.1 1 0 0 0
+      0 0 0 0 0 0
+      0 0 0
+      -2.5 0.3 0 -0.3 0 0 0 0 0 0 0 0 0 0
+      -2.5 -0.3 0 -0.3 0 0 0 0 0 0 0 0 0 0 0
+      0 -0.4 0.8 0 -0.4 0 0 0
+      0 -0.4 0.8 0 -0.4 0 0 0"/>
+  </keyframe>
+
+</mujoco>

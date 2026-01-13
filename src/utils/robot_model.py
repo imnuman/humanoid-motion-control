@@ -451,3 +451,326 @@ def create_simple_humanoid_model(
     model = RobotModel()
     model.config = config
     return model
+
+
+# =============================================================
+# Atlas 2026 Factory Functions
+# =============================================================
+
+def create_atlas_2026_model(
+    config_path: Optional[str] = None,
+    urdf_path: Optional[str] = None
+) -> RobotModel:
+    """
+    Create Boston Dynamics Atlas 2026 robot model
+
+    56 DOF fully rotational humanoid robot based on CES 2026 specs:
+    - Height: 1.9m (6.2 ft)
+    - Mass: 89 kg
+    - Payload: 55 kg peak, 30 kg sustained
+    - Battery: 4 hours runtime
+    - IP67 rated
+
+    Args:
+        config_path: Path to Atlas config YAML (uses default if None)
+        urdf_path: Path to Atlas URDF file (uses default if None)
+
+    Returns:
+        RobotModel configured for Atlas 2026
+    """
+    # Default paths
+    if config_path is None:
+        base_path = Path(__file__).parent.parent.parent
+        config_path = str(base_path / "config" / "atlas_2026_config.yaml")
+
+    if urdf_path is None:
+        base_path = Path(__file__).parent.parent.parent
+        urdf_path = str(base_path / "models" / "urdf" / "atlas_2026.urdf")
+
+    # Create model
+    model = RobotModel(
+        urdf_path=urdf_path if Path(urdf_path).exists() else None,
+        config_path=config_path if Path(config_path).exists() else None
+    )
+
+    # Override with Atlas-specific config if file doesn't exist
+    if not Path(config_path).exists():
+        model.config = RobotConfig(
+            name="boston_dynamics_atlas_2026",
+            total_mass=89.0,
+            standing_height=1.9,
+            num_joints=56,
+            base_link="pelvis",
+            left_foot="l_foot_link",
+            right_foot="r_foot_link",
+            left_hand="l_hand_link",
+            right_hand="r_hand_link"
+        )
+
+    return model
+
+
+def get_atlas_2026_mpc_params() -> Dict:
+    """
+    Get MPC parameters tuned for Atlas 2026 dynamics
+
+    Returns:
+        Dictionary of MPC parameters optimized for Atlas
+    """
+    return {
+        # Robot physical parameters
+        'mass': 89.0,
+        'gravity': 9.81,
+        'standing_height': 1.1,  # CoM height when standing
+        'foot_size': (0.28, 0.12),  # Larger feet for stability
+        'max_force': 800.0,  # Higher forces for heavier robot
+        'friction_coefficient': 0.7,
+        'hip_width': 0.32,
+        'inertia': np.diag([12.0, 12.0, 3.0]),  # Higher inertia
+
+        # MPC configuration
+        'horizon': 15,  # Longer horizon for taller robot
+        'dt': 0.02,  # 50 Hz
+
+        # State tracking weights (tuned for stability)
+        'Q_pos': np.array([20.0, 20.0, 200.0]),
+        'Q_vel': np.array([5.0, 5.0, 20.0]),
+        'Q_ori': np.array([100.0, 100.0, 20.0]),
+        'Q_ang_vel': np.array([3.0, 3.0, 10.0]),
+
+        # Control weights
+        'R_force': 0.000005,
+        'R_force_rate': 0.00005,
+    }
+
+
+def get_atlas_2026_wbc_params() -> Dict:
+    """
+    Get Whole-Body Control parameters for Atlas 2026
+
+    Returns:
+        Dictionary of WBC task weights and gains
+    """
+    return {
+        'dt': 0.002,  # 500 Hz
+
+        # Task weights (higher for taller, heavier robot)
+        'com_tracking_weight': 150.0,
+        'swing_foot_weight': 80.0,
+        'torso_orientation_weight': 50.0,
+        'arm_pose_weight': 20.0,
+        'hand_pose_weight': 15.0,
+        'head_tracking_weight': 10.0,
+        'joint_regularization_weight': 0.5,
+
+        # Gains for CoM tracking
+        'com_kp': np.array([150.0, 150.0, 200.0]),
+        'com_kd': np.array([30.0, 30.0, 40.0]),
+
+        # Gains for swing foot
+        'swing_kp': np.array([300.0, 300.0, 300.0, 150.0, 150.0, 150.0]),
+        'swing_kd': np.array([60.0, 60.0, 60.0, 30.0, 30.0, 30.0]),
+
+        # Gains for torso orientation
+        'torso_kp': np.array([150.0, 150.0, 150.0]),
+        'torso_kd': np.array([30.0, 30.0, 30.0]),
+
+        # Gains for arms
+        'arm_kp': 80.0,
+        'arm_kd': 15.0,
+
+        # Constraints
+        'friction_cone': True,
+        'torque_limits': True,
+        'joint_limits': True,
+        'self_collision': True,
+    }
+
+
+def get_atlas_2026_gait_params() -> Dict:
+    """
+    Get gait parameters optimized for Atlas 2026 (1.9m height)
+
+    Returns:
+        Dictionary of gait timing and step parameters
+    """
+    return {
+        'walk': {
+            'stance_duration': 0.45,  # Longer stance for stability
+            'swing_duration': 0.35,
+            'swing_height': 0.12,  # Higher step clearance
+            'step_length': 0.50,  # Longer stride
+            'phase_offset': 0.5,
+        },
+        'trot': {
+            'stance_duration': 0.35,
+            'swing_duration': 0.35,
+            'swing_height': 0.15,
+            'step_length': 0.60,
+            'phase_offset': 0.5,
+        },
+        'run': {
+            'stance_duration': 0.20,
+            'swing_duration': 0.45,
+            'swing_height': 0.20,
+            'step_length': 0.80,
+            'phase_offset': 0.5,
+        },
+        'industrial_walk': {
+            # Slow, stable gait for payload handling
+            'stance_duration': 0.60,
+            'swing_duration': 0.40,
+            'swing_height': 0.08,
+            'step_length': 0.35,
+            'phase_offset': 0.5,
+        },
+    }
+
+
+def get_atlas_2026_joint_groups() -> Dict[str, List[str]]:
+    """
+    Get Atlas 2026 joint groupings for control
+
+    Returns:
+        Dictionary mapping body part names to joint lists
+    """
+    return {
+        'left_leg': [
+            'l_hip_yaw', 'l_hip_roll', 'l_hip_pitch',
+            'l_knee_pitch', 'l_knee_roll',
+            'l_ankle_pitch', 'l_ankle_roll', 'l_ankle_yaw'
+        ],
+        'right_leg': [
+            'r_hip_yaw', 'r_hip_roll', 'r_hip_pitch',
+            'r_knee_pitch', 'r_knee_roll',
+            'r_ankle_pitch', 'r_ankle_roll', 'r_ankle_yaw'
+        ],
+        'torso': [
+            'waist_yaw', 'waist_pitch', 'waist_roll',
+            'chest_yaw', 'chest_pitch', 'chest_roll'
+        ],
+        'left_arm': [
+            'l_shoulder_pitch', 'l_shoulder_roll', 'l_shoulder_yaw',
+            'l_elbow_pitch', 'l_elbow_roll',
+            'l_wrist_yaw', 'l_wrist_pitch', 'l_wrist_roll'
+        ],
+        'right_arm': [
+            'r_shoulder_pitch', 'r_shoulder_roll', 'r_shoulder_yaw',
+            'r_elbow_pitch', 'r_elbow_roll',
+            'r_wrist_yaw', 'r_wrist_pitch', 'r_wrist_roll'
+        ],
+        'head': ['neck_yaw', 'neck_pitch', 'neck_roll'],
+        'left_hand': [
+            'l_thumb_base', 'l_thumb_flex',
+            'l_index_flex', 'l_middle_flex', 'l_ring_flex', 'l_pinky_flex',
+            'l_hand_spread'
+        ],
+        'right_hand': [
+            'r_thumb_base', 'r_thumb_flex', 'r_thumb_tip',
+            'r_index_flex', 'r_middle_flex', 'r_ring_flex', 'r_pinky_flex',
+            'r_hand_spread'
+        ],
+        # Locomotion joints (used for walking)
+        'locomotion': [
+            'l_hip_yaw', 'l_hip_roll', 'l_hip_pitch',
+            'l_knee_pitch', 'l_knee_roll',
+            'l_ankle_pitch', 'l_ankle_roll', 'l_ankle_yaw',
+            'r_hip_yaw', 'r_hip_roll', 'r_hip_pitch',
+            'r_knee_pitch', 'r_knee_roll',
+            'r_ankle_pitch', 'r_ankle_roll', 'r_ankle_yaw'
+        ],
+        # Upper body joints
+        'upper_body': [
+            'waist_yaw', 'waist_pitch', 'waist_roll',
+            'chest_yaw', 'chest_pitch', 'chest_roll',
+            'l_shoulder_pitch', 'l_shoulder_roll', 'l_shoulder_yaw',
+            'l_elbow_pitch', 'l_elbow_roll',
+            'l_wrist_yaw', 'l_wrist_pitch', 'l_wrist_roll',
+            'r_shoulder_pitch', 'r_shoulder_roll', 'r_shoulder_yaw',
+            'r_elbow_pitch', 'r_elbow_roll',
+            'r_wrist_yaw', 'r_wrist_pitch', 'r_wrist_roll',
+            'neck_yaw', 'neck_pitch', 'neck_roll'
+        ],
+    }
+
+
+def get_atlas_2026_default_pose() -> Dict[str, float]:
+    """
+    Get default standing pose for Atlas 2026
+
+    Returns:
+        Dictionary of joint positions (radians)
+    """
+    return {
+        # Left leg
+        'l_hip_yaw': 0.0,
+        'l_hip_roll': 0.0,
+        'l_hip_pitch': -0.40,
+        'l_knee_pitch': 0.80,
+        'l_knee_roll': 0.0,
+        'l_ankle_pitch': -0.40,
+        'l_ankle_roll': 0.0,
+        'l_ankle_yaw': 0.0,
+
+        # Right leg
+        'r_hip_yaw': 0.0,
+        'r_hip_roll': 0.0,
+        'r_hip_pitch': -0.40,
+        'r_knee_pitch': 0.80,
+        'r_knee_roll': 0.0,
+        'r_ankle_pitch': -0.40,
+        'r_ankle_roll': 0.0,
+        'r_ankle_yaw': 0.0,
+
+        # Torso
+        'waist_yaw': 0.0,
+        'waist_pitch': 0.0,
+        'waist_roll': 0.0,
+        'chest_yaw': 0.0,
+        'chest_pitch': 0.0,
+        'chest_roll': 0.0,
+
+        # Left arm - Industrial ready pose
+        'l_shoulder_pitch': 0.3,
+        'l_shoulder_roll': 0.5,
+        'l_shoulder_yaw': 0.0,
+        'l_elbow_pitch': -1.2,
+        'l_elbow_roll': 0.0,
+        'l_wrist_yaw': 0.0,
+        'l_wrist_pitch': 0.0,
+        'l_wrist_roll': 0.0,
+
+        # Right arm
+        'r_shoulder_pitch': 0.3,
+        'r_shoulder_roll': -0.5,
+        'r_shoulder_yaw': 0.0,
+        'r_elbow_pitch': -1.2,
+        'r_elbow_roll': 0.0,
+        'r_wrist_yaw': 0.0,
+        'r_wrist_pitch': 0.0,
+        'r_wrist_roll': 0.0,
+
+        # Head
+        'neck_yaw': 0.0,
+        'neck_pitch': 0.0,
+        'neck_roll': 0.0,
+
+        # Left hand - Open
+        'l_thumb_base': 0.3,
+        'l_thumb_flex': 0.0,
+        'l_index_flex': 0.0,
+        'l_middle_flex': 0.0,
+        'l_ring_flex': 0.0,
+        'l_pinky_flex': 0.0,
+        'l_hand_spread': 0.2,
+
+        # Right hand - Open
+        'r_thumb_base': 0.3,
+        'r_thumb_flex': 0.0,
+        'r_thumb_tip': 0.0,
+        'r_index_flex': 0.0,
+        'r_middle_flex': 0.0,
+        'r_ring_flex': 0.0,
+        'r_pinky_flex': 0.0,
+        'r_hand_spread': 0.2,
+    }

@@ -1,0 +1,456 @@
+# Boston Dynamics Atlas 2026 - Production Version Configuration
+# =============================================================
+# Based on CES 2026 announcement specifications
+# 56 DOF fully rotational humanoid robot
+
+robot:
+  name: "boston_dynamics_atlas_2026"
+  version: "production"
+  total_mass: 89.0              # kg (estimated based on 2024 version)
+  standing_height: 1.9          # m (6.2 ft)
+  reach: 2.3                    # m (7.5 ft)
+  num_joints: 56
+
+  # Physical parameters
+  foot_length: 0.28             # m (larger for stability)
+  foot_width: 0.12              # m
+  hip_width: 0.32               # m
+  shoulder_width: 0.52          # m
+
+  # Payload capacity
+  payload_per_arm: 27.5         # kg (55 kg total / 2)
+  sustained_payload: 30.0       # kg
+  peak_payload: 55.0            # kg
+
+  # Operating conditions
+  temp_min: -20                 # °C
+  temp_max: 40                  # °C
+  ip_rating: "IP67"             # Water resistant
+
+  # Inertia (approximate for 1.9m humanoid)
+  inertia:
+    ixx: 12.0
+    iyy: 12.0
+    izz: 3.0
+
+# Frame names
+frames:
+  base: "pelvis"
+  torso: "torso_link"
+  chest: "chest_link"
+  head: "head_link"
+  left_foot: "l_foot_link"
+  right_foot: "r_foot_link"
+  left_hand: "l_hand_link"
+  right_hand: "r_hand_link"
+  imu: "imu_link"
+
+# =============================================================
+# Joint Configuration - 56 DOF Total
+# =============================================================
+# Fully rotational joints at all major articulation points
+# Designed for maximum range of motion and industrial tasks
+
+joints:
+  # ---------------------------------------------------------
+  # LEFT LEG (8 DOF) - Full rotation capability
+  # ---------------------------------------------------------
+  left_leg:
+    - l_hip_yaw           # Vertical axis rotation (360°)
+    - l_hip_roll          # Frontal plane
+    - l_hip_pitch         # Sagittal plane
+    - l_knee_pitch        # Primary knee flexion
+    - l_knee_roll         # Knee rotation (unique to Atlas)
+    - l_ankle_pitch       # Foot dorsi/plantar flexion
+    - l_ankle_roll        # Foot inversion/eversion
+    - l_ankle_yaw         # Foot rotation
+
+  # ---------------------------------------------------------
+  # RIGHT LEG (8 DOF)
+  # ---------------------------------------------------------
+  right_leg:
+    - r_hip_yaw
+    - r_hip_roll
+    - r_hip_pitch
+    - r_knee_pitch
+    - r_knee_roll
+    - r_ankle_pitch
+    - r_ankle_roll
+    - r_ankle_yaw
+
+  # ---------------------------------------------------------
+  # TORSO/SPINE (6 DOF) - Dual vertebrae sections
+  # ---------------------------------------------------------
+  torso:
+    # Lower spine (waist)
+    - waist_yaw           # Torso rotation
+    - waist_pitch         # Forward/back lean
+    - waist_roll          # Side lean
+    # Upper spine (chest)
+    - chest_yaw           # Upper torso rotation
+    - chest_pitch         # Upper forward/back
+    - chest_roll          # Upper side lean
+
+  # ---------------------------------------------------------
+  # LEFT ARM (8 DOF) - Full manipulation capability
+  # ---------------------------------------------------------
+  left_arm:
+    - l_shoulder_pitch    # Arm raise forward/back
+    - l_shoulder_roll     # Arm raise sideways
+    - l_shoulder_yaw      # Upper arm rotation (360°)
+    - l_elbow_pitch       # Elbow flexion
+    - l_elbow_roll        # Forearm rotation
+    - l_wrist_yaw         # Wrist rotation
+    - l_wrist_pitch       # Wrist flex/extend
+    - l_wrist_roll        # Wrist pronation/supination
+
+  # ---------------------------------------------------------
+  # RIGHT ARM (8 DOF)
+  # ---------------------------------------------------------
+  right_arm:
+    - r_shoulder_pitch
+    - r_shoulder_roll
+    - r_shoulder_yaw
+    - r_elbow_pitch
+    - r_elbow_roll
+    - r_wrist_yaw
+    - r_wrist_pitch
+    - r_wrist_roll
+
+  # ---------------------------------------------------------
+  # HEAD/NECK (3 DOF)
+  # ---------------------------------------------------------
+  head:
+    - neck_yaw            # Head turn left/right
+    - neck_pitch          # Head nod up/down
+    - neck_roll           # Head tilt
+
+  # ---------------------------------------------------------
+  # LEFT HAND (7 DOF) - Dexterous gripper
+  # ---------------------------------------------------------
+  left_hand:
+    - l_thumb_base        # Thumb opposition
+    - l_thumb_flex        # Thumb flexion
+    - l_index_flex        # Index finger
+    - l_middle_flex       # Middle finger
+    - l_ring_flex         # Ring finger
+    - l_pinky_flex        # Pinky finger
+    - l_hand_spread       # Finger spread
+
+  # ---------------------------------------------------------
+  # RIGHT HAND (8 DOF) - Asymmetric for tool use
+  # ---------------------------------------------------------
+  right_hand:
+    - r_thumb_base
+    - r_thumb_flex
+    - r_thumb_tip         # Extra thumb DOF for precision
+    - r_index_flex
+    - r_middle_flex
+    - r_ring_flex
+    - r_pinky_flex
+    - r_hand_spread
+
+# =============================================================
+# Joint Limits
+# =============================================================
+joint_limits:
+  position:
+    # Leg joints - Enhanced range for 360° rotation
+    hip_yaw: [-3.14, 3.14]        # Full rotation
+    hip_roll: [-0.70, 0.70]       # 40° each way
+    hip_pitch: [-1.74, 0.87]      # -100° to 50°
+    knee_pitch: [0.0, 2.62]       # 0° to 150°
+    knee_roll: [-0.26, 0.26]      # ±15°
+    ankle_pitch: [-1.05, 0.70]    # -60° to 40°
+    ankle_roll: [-0.44, 0.44]     # ±25°
+    ankle_yaw: [-0.52, 0.52]      # ±30°
+
+    # Torso joints
+    waist_yaw: [-1.57, 1.57]      # ±90°
+    waist_pitch: [-0.52, 0.70]    # -30° to 40°
+    waist_roll: [-0.44, 0.44]     # ±25°
+    chest_yaw: [-1.05, 1.05]      # ±60°
+    chest_pitch: [-0.35, 0.52]    # -20° to 30°
+    chest_roll: [-0.35, 0.35]     # ±20°
+
+    # Arm joints - Full rotation at shoulder
+    shoulder_pitch: [-3.14, 3.14] # Full rotation
+    shoulder_roll: [-0.35, 3.14]  # -20° to 180°
+    shoulder_yaw: [-3.14, 3.14]   # Full rotation
+    elbow_pitch: [-2.79, 0.0]     # -160° to 0°
+    elbow_roll: [-3.14, 3.14]     # Full rotation
+    wrist_yaw: [-3.14, 3.14]      # Full rotation
+    wrist_pitch: [-1.22, 1.22]    # ±70°
+    wrist_roll: [-3.14, 3.14]     # Full rotation
+
+    # Head joints
+    neck_yaw: [-1.57, 1.57]       # ±90°
+    neck_pitch: [-0.70, 0.87]     # -40° to 50°
+    neck_roll: [-0.52, 0.52]      # ±30°
+
+    # Hand joints
+    thumb_base: [0.0, 1.57]       # 0° to 90°
+    thumb_flex: [0.0, 1.40]       # 0° to 80°
+    finger_flex: [0.0, 1.74]      # 0° to 100°
+    hand_spread: [0.0, 0.52]      # 0° to 30°
+
+  velocity:
+    leg: 12.0                     # rad/s (high-speed motion)
+    arm: 10.0
+    torso: 6.0
+    head: 4.0
+    hand: 8.0
+
+  torque:
+    # High-torque actuators (220 Nm/kg density)
+    hip_yaw: 350.0                # Nm
+    hip_roll: 350.0
+    hip_pitch: 450.0
+    knee_pitch: 500.0
+    knee_roll: 150.0
+    ankle_pitch: 200.0
+    ankle_roll: 150.0
+    ankle_yaw: 100.0
+    waist: 400.0
+    chest: 300.0
+    shoulder_pitch: 200.0
+    shoulder_roll: 200.0
+    shoulder_yaw: 150.0
+    elbow: 100.0
+    wrist: 50.0
+    neck: 30.0
+    hand: 20.0
+
+# =============================================================
+# MPC Configuration - Tuned for Atlas dynamics
+# =============================================================
+mpc:
+  horizon: 15                     # Longer horizon for taller robot
+  dt: 0.02                        # 50 Hz
+  max_force: 800.0                # N (higher for heavier payload)
+  friction_coefficient: 0.7
+
+  weights:
+    position: [20.0, 20.0, 200.0]
+    velocity: [5.0, 5.0, 20.0]
+    orientation: [100.0, 100.0, 20.0]
+    angular_velocity: [3.0, 3.0, 10.0]
+    force: 0.000005
+    force_rate: 0.00005
+
+# =============================================================
+# WBC Configuration
+# =============================================================
+wbc:
+  dt: 0.002                       # 500 Hz
+
+  tasks:
+    com_tracking:
+      weight: 150.0
+      gain_p: [150, 150, 200]
+      gain_d: [30, 30, 40]
+
+    swing_foot:
+      weight: 80.0
+      gain_p: [300, 300, 300, 150, 150, 150]
+      gain_d: [60, 60, 60, 30, 30, 30]
+
+    torso_orientation:
+      weight: 50.0
+      gain_p: [150, 150, 150]
+      gain_d: [30, 30, 30]
+
+    arm_pose:
+      weight: 20.0
+      gain_p: 80.0
+      gain_d: 15.0
+
+    hand_pose:
+      weight: 15.0
+      gain_p: 50.0
+      gain_d: 10.0
+
+    head_tracking:
+      weight: 10.0
+      gain_p: 30.0
+      gain_d: 6.0
+
+    joint_regularization:
+      weight: 0.5
+      gain_p: 10.0
+      gain_d: 2.0
+
+  constraints:
+    friction_cone: true
+    torque_limits: true
+    joint_limits: true
+    self_collision: true
+
+# =============================================================
+# Gait Configuration - Optimized for 1.9m height
+# =============================================================
+gait:
+  walk:
+    stance_duration: 0.45         # Longer stance for taller robot
+    swing_duration: 0.35
+    swing_height: 0.12            # Higher step clearance
+    step_length: 0.50             # Longer stride
+    phase_offset: 0.5
+
+  trot:
+    stance_duration: 0.35
+    swing_duration: 0.35
+    swing_height: 0.15
+    step_length: 0.60
+    phase_offset: 0.5
+
+  run:
+    stance_duration: 0.20
+    swing_duration: 0.45
+    swing_height: 0.20
+    step_length: 0.80
+    phase_offset: 0.5
+
+  industrial_walk:
+    # Slow, stable gait for payload handling
+    stance_duration: 0.60
+    swing_duration: 0.40
+    swing_height: 0.08
+    step_length: 0.35
+    phase_offset: 0.5
+
+# =============================================================
+# State Estimation
+# =============================================================
+estimation:
+  imu_frame: "imu_link"
+  contact_frames: ["l_foot_link", "r_foot_link"]
+
+  # High-precision IMU (4 kHz joint encoders mentioned)
+  imu_rate: 1000                  # Hz
+  encoder_rate: 4000              # Hz
+
+  process_noise:
+    position: 0.0005
+    velocity: 0.005
+    orientation: 0.0005
+
+  measurement_noise:
+    kinematics: 0.005
+    velocity: 0.02
+
+# =============================================================
+# Power System
+# =============================================================
+power:
+  battery_capacity: 4.0           # hours runtime
+  battery_swap_time: 180          # seconds (3 minutes)
+  nominal_power: 800              # W average
+  peak_power: 5000                # W burst
+
+# =============================================================
+# Simulation
+# =============================================================
+simulation:
+  gravity: [0, 0, -9.81]
+  timestep: 0.0005                # 2 kHz physics for stability
+  ground_friction: 0.8
+  contact_stiffness: 100000
+  contact_damping: 1000
+
+# =============================================================
+# Default Standing Pose
+# =============================================================
+default_pose:
+  # Left leg
+  l_hip_yaw: 0.0
+  l_hip_roll: 0.0
+  l_hip_pitch: -0.40
+  l_knee_pitch: 0.80
+  l_knee_roll: 0.0
+  l_ankle_pitch: -0.40
+  l_ankle_roll: 0.0
+  l_ankle_yaw: 0.0
+
+  # Right leg
+  r_hip_yaw: 0.0
+  r_hip_roll: 0.0
+  r_hip_pitch: -0.40
+  r_knee_pitch: 0.80
+  r_knee_roll: 0.0
+  r_ankle_pitch: -0.40
+  r_ankle_roll: 0.0
+  r_ankle_yaw: 0.0
+
+  # Torso
+  waist_yaw: 0.0
+  waist_pitch: 0.0
+  waist_roll: 0.0
+  chest_yaw: 0.0
+  chest_pitch: 0.0
+  chest_roll: 0.0
+
+  # Left arm - Industrial ready pose
+  l_shoulder_pitch: 0.3
+  l_shoulder_roll: 0.5
+  l_shoulder_yaw: 0.0
+  l_elbow_pitch: -1.2
+  l_elbow_roll: 0.0
+  l_wrist_yaw: 0.0
+  l_wrist_pitch: 0.0
+  l_wrist_roll: 0.0
+
+  # Right arm
+  r_shoulder_pitch: 0.3
+  r_shoulder_roll: -0.5
+  r_shoulder_yaw: 0.0
+  r_elbow_pitch: -1.2
+  r_elbow_roll: 0.0
+  r_wrist_yaw: 0.0
+  r_wrist_pitch: 0.0
+  r_wrist_roll: 0.0
+
+  # Head - Forward looking
+  neck_yaw: 0.0
+  neck_pitch: 0.0
+  neck_roll: 0.0
+
+  # Hands - Open
+  l_thumb_base: 0.3
+  l_thumb_flex: 0.0
+  l_index_flex: 0.0
+  l_middle_flex: 0.0
+  l_ring_flex: 0.0
+  l_pinky_flex: 0.0
+  l_hand_spread: 0.2
+
+  r_thumb_base: 0.3
+  r_thumb_flex: 0.0
+  r_thumb_tip: 0.0
+  r_index_flex: 0.0
+  r_middle_flex: 0.0
+  r_ring_flex: 0.0
+  r_pinky_flex: 0.0
+  r_hand_spread: 0.2
+
+# =============================================================
+# Industrial Task Configurations
+# =============================================================
+tasks:
+  parts_sequencing:
+    description: "Pick and place parts in sequence"
+    preferred_gait: "industrial_walk"
+    arm_mode: "dual_arm_coordinated"
+    max_payload: 30.0
+
+  component_assembly:
+    description: "Precise assembly operations"
+    preferred_gait: "stationary"
+    arm_mode: "precision"
+    force_control: true
+
+  heavy_lifting:
+    description: "Move heavy objects"
+    preferred_gait: "industrial_walk"
+    arm_mode: "power"
+    max_payload: 55.0
