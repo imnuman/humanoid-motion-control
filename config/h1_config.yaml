@@ -1,0 +1,203 @@
+# Unitree H1 Humanoid Robot Configuration
+# =========================================
+
+robot:
+  name: "unitree_h1"
+  total_mass: 47.0              # kg
+  standing_height: 1.0          # m
+  num_joints: 19
+
+  # Physical parameters
+  foot_length: 0.15             # m
+  foot_width: 0.08              # m
+  hip_width: 0.2                # m
+
+  # Inertia (approximate, body frame)
+  inertia:
+    ixx: 5.0
+    iyy: 5.0
+    izz: 1.0
+
+# Frame names
+frames:
+  base: "torso_link"
+  left_foot: "left_ankle_roll_link"
+  right_foot: "right_ankle_roll_link"
+  left_hand: "left_wrist_yaw_link"
+  right_hand: "right_wrist_yaw_link"
+  imu: "imu_link"
+
+# Joint configuration
+joints:
+  # Left leg (6 DOF)
+  left_leg:
+    - left_hip_yaw
+    - left_hip_roll
+    - left_hip_pitch
+    - left_knee
+    - left_ankle_pitch
+    - left_ankle_roll
+
+  # Right leg (6 DOF)
+  right_leg:
+    - right_hip_yaw
+    - right_hip_roll
+    - right_hip_pitch
+    - right_knee
+    - right_ankle_pitch
+    - right_ankle_roll
+
+  # Torso (1 DOF)
+  torso:
+    - torso_yaw
+
+  # Left arm (3 DOF)
+  left_arm:
+    - left_shoulder_pitch
+    - left_shoulder_roll
+    - left_elbow
+
+  # Right arm (3 DOF)
+  right_arm:
+    - right_shoulder_pitch
+    - right_shoulder_roll
+    - right_elbow
+
+# Joint limits
+joint_limits:
+  position:
+    hip_yaw: [-0.43, 0.43]       # rad
+    hip_roll: [-0.43, 0.43]
+    hip_pitch: [-1.57, 0.52]
+    knee: [0.0, 2.05]
+    ankle_pitch: [-0.87, 0.52]
+    ankle_roll: [-0.26, 0.26]
+    torso_yaw: [-2.35, 2.35]
+    shoulder_pitch: [-2.87, 2.87]
+    shoulder_roll: [-0.34, 3.11]
+    elbow: [-1.25, 2.61]
+
+  velocity:
+    default: 10.0                # rad/s
+
+  torque:
+    hip: 200.0                   # Nm
+    knee: 300.0
+    ankle: 40.0
+    torso: 200.0
+    shoulder: 25.0
+    elbow: 25.0
+
+# MPC configuration
+mpc:
+  horizon: 10                    # prediction steps
+  dt: 0.02                       # timestep (50 Hz)
+  max_force: 500.0               # N
+  friction_coefficient: 0.6
+
+  weights:
+    position: [10.0, 10.0, 100.0]
+    velocity: [2.0, 2.0, 10.0]
+    orientation: [50.0, 50.0, 10.0]
+    angular_velocity: [1.0, 1.0, 5.0]
+    force: 0.00001
+    force_rate: 0.0001
+
+# WBC configuration
+wbc:
+  dt: 0.002                      # 500 Hz
+
+  tasks:
+    com_tracking:
+      weight: 100.0
+      gain_p: [100, 100, 100]
+      gain_d: [20, 20, 20]
+
+    swing_foot:
+      weight: 50.0
+      gain_p: [200, 200, 200, 100, 100, 100]
+      gain_d: [40, 40, 40, 20, 20, 20]
+
+    torso_orientation:
+      weight: 30.0
+      gain_p: [100, 100, 100]
+      gain_d: [20, 20, 20]
+
+    joint_regularization:
+      weight: 1.0
+      gain_p: 10.0
+      gain_d: 2.0
+
+  constraints:
+    friction_cone: true
+    torque_limits: true
+    joint_limits: true
+
+# Gait configuration
+gait:
+  walk:
+    stance_duration: 0.35        # s
+    swing_duration: 0.25         # s
+    swing_height: 0.08           # m
+    step_length: 0.30            # m
+    phase_offset: 0.5
+
+  trot:
+    stance_duration: 0.25
+    swing_duration: 0.25
+    swing_height: 0.10
+    step_length: 0.35
+    phase_offset: 0.5
+
+  run:
+    stance_duration: 0.15
+    swing_duration: 0.35
+    swing_height: 0.12
+    step_length: 0.50
+    phase_offset: 0.5
+
+# State estimation
+estimation:
+  imu_frame: "imu_link"
+  contact_frames: ["left_ankle_roll_link", "right_ankle_roll_link"]
+
+  process_noise:
+    position: 0.001
+    velocity: 0.01
+    orientation: 0.001
+
+  measurement_noise:
+    kinematics: 0.01
+    velocity: 0.05
+
+# Simulation
+simulation:
+  gravity: [0, 0, -9.81]
+  timestep: 0.001                # 1 kHz physics
+  ground_friction: 0.8
+
+# Default standing pose (joint positions in radians)
+default_pose:
+  left_hip_yaw: 0.0
+  left_hip_roll: 0.0
+  left_hip_pitch: -0.4
+  left_knee: 0.8
+  left_ankle_pitch: -0.4
+  left_ankle_roll: 0.0
+
+  right_hip_yaw: 0.0
+  right_hip_roll: 0.0
+  right_hip_pitch: -0.4
+  right_knee: 0.8
+  right_ankle_pitch: -0.4
+  right_ankle_roll: 0.0
+
+  torso_yaw: 0.0
+
+  left_shoulder_pitch: 0.0
+  left_shoulder_roll: 0.3
+  left_elbow: 0.5
+
+  right_shoulder_pitch: 0.0
+  right_shoulder_roll: -0.3
+  right_elbow: 0.5

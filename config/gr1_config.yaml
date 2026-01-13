@@ -1,0 +1,258 @@
+# Fourier GR-1 Humanoid Robot Configuration
+# ==========================================
+
+robot:
+  name: "fourier_gr1"
+  total_mass: 55.0              # kg
+  standing_height: 1.65         # m (taller humanoid)
+  num_joints: 32
+
+  # Physical parameters
+  foot_length: 0.25             # m (larger feet)
+  foot_width: 0.10              # m
+  hip_width: 0.25               # m
+
+  # Inertia (approximate, body frame)
+  inertia:
+    ixx: 8.0
+    iyy: 8.0
+    izz: 2.0
+
+# Frame names
+frames:
+  base: "pelvis"
+  left_foot: "l_foot_link"
+  right_foot: "r_foot_link"
+  left_hand: "l_hand_link"
+  right_hand: "r_hand_link"
+  imu: "imu_link"
+  head: "head_link"
+
+# Joint configuration
+joints:
+  # Left leg (6 DOF)
+  left_leg:
+    - l_hip_yaw
+    - l_hip_roll
+    - l_hip_pitch
+    - l_knee_pitch
+    - l_ankle_pitch
+    - l_ankle_roll
+
+  # Right leg (6 DOF)
+  right_leg:
+    - r_hip_yaw
+    - r_hip_roll
+    - r_hip_pitch
+    - r_knee_pitch
+    - r_ankle_pitch
+    - r_ankle_roll
+
+  # Torso/Waist (3 DOF)
+  torso:
+    - waist_yaw
+    - waist_pitch
+    - waist_roll
+
+  # Left arm (7 DOF)
+  left_arm:
+    - l_shoulder_pitch
+    - l_shoulder_roll
+    - l_shoulder_yaw
+    - l_elbow_pitch
+    - l_wrist_yaw
+    - l_wrist_pitch
+    - l_wrist_roll
+
+  # Right arm (7 DOF)
+  right_arm:
+    - r_shoulder_pitch
+    - r_shoulder_roll
+    - r_shoulder_yaw
+    - r_elbow_pitch
+    - r_wrist_yaw
+    - r_wrist_pitch
+    - r_wrist_roll
+
+  # Head (2 DOF)
+  head:
+    - head_yaw
+    - head_pitch
+
+  # Hands (optional gripper DOFs not included)
+
+# Joint limits
+joint_limits:
+  position:
+    hip_yaw: [-0.52, 0.52]
+    hip_roll: [-0.52, 0.52]
+    hip_pitch: [-1.57, 0.78]
+    knee_pitch: [0.0, 2.44]
+    ankle_pitch: [-0.87, 0.52]
+    ankle_roll: [-0.35, 0.35]
+    waist_yaw: [-1.57, 1.57]
+    waist_pitch: [-0.52, 0.52]
+    waist_roll: [-0.35, 0.35]
+    shoulder_pitch: [-3.14, 1.57]
+    shoulder_roll: [-0.26, 2.87]
+    shoulder_yaw: [-2.09, 2.09]
+    elbow_pitch: [-2.62, 0.0]
+    wrist_yaw: [-1.57, 1.57]
+    wrist_pitch: [-0.87, 0.87]
+    wrist_roll: [-1.57, 1.57]
+    head_yaw: [-1.57, 1.57]
+    head_pitch: [-0.52, 0.52]
+
+  velocity:
+    leg: 8.0                     # rad/s
+    arm: 6.0
+    waist: 4.0
+    head: 3.0
+
+  torque:
+    hip: 180.0                   # Nm
+    knee: 300.0
+    ankle: 60.0
+    waist: 150.0
+    shoulder: 50.0
+    elbow: 30.0
+    wrist: 10.0
+    head: 5.0
+
+# MPC configuration
+mpc:
+  horizon: 12                    # longer horizon for taller robot
+  dt: 0.02                       # 50 Hz
+  max_force: 600.0               # N (larger robot)
+  friction_coefficient: 0.6
+
+  weights:
+    position: [15.0, 15.0, 150.0]
+    velocity: [3.0, 3.0, 15.0]
+    orientation: [80.0, 80.0, 15.0]
+    angular_velocity: [2.0, 2.0, 8.0]
+    force: 0.00001
+    force_rate: 0.0001
+
+# WBC configuration
+wbc:
+  dt: 0.002                      # 500 Hz
+
+  tasks:
+    com_tracking:
+      weight: 120.0
+      gain_p: [120, 120, 150]
+      gain_d: [25, 25, 30]
+
+    swing_foot:
+      weight: 60.0
+      gain_p: [250, 250, 250, 120, 120, 120]
+      gain_d: [50, 50, 50, 25, 25, 25]
+
+    torso_orientation:
+      weight: 40.0
+      gain_p: [120, 120, 120]
+      gain_d: [25, 25, 25]
+
+    arm_pose:
+      weight: 10.0
+      gain_p: 50.0
+      gain_d: 10.0
+
+    joint_regularization:
+      weight: 0.5
+      gain_p: 10.0
+      gain_d: 2.0
+
+  constraints:
+    friction_cone: true
+    torque_limits: true
+    joint_limits: true
+
+# Gait configuration
+gait:
+  walk:
+    stance_duration: 0.40        # Longer stance for taller robot
+    swing_duration: 0.30
+    swing_height: 0.10           # Higher swing
+    step_length: 0.40
+    phase_offset: 0.5
+
+  trot:
+    stance_duration: 0.30
+    swing_duration: 0.30
+    swing_height: 0.12
+    step_length: 0.45
+    phase_offset: 0.5
+
+  run:
+    stance_duration: 0.18
+    swing_duration: 0.40
+    swing_height: 0.15
+    step_length: 0.60
+    phase_offset: 0.5
+
+# State estimation
+estimation:
+  imu_frame: "imu_link"
+  contact_frames: ["l_foot_link", "r_foot_link"]
+
+  process_noise:
+    position: 0.001
+    velocity: 0.01
+    orientation: 0.001
+
+  measurement_noise:
+    kinematics: 0.01
+    velocity: 0.05
+
+# Simulation
+simulation:
+  gravity: [0, 0, -9.81]
+  timestep: 0.001
+  ground_friction: 0.8
+
+# Default standing pose
+default_pose:
+  # Left leg
+  l_hip_yaw: 0.0
+  l_hip_roll: 0.0
+  l_hip_pitch: -0.35
+  l_knee_pitch: 0.70
+  l_ankle_pitch: -0.35
+  l_ankle_roll: 0.0
+
+  # Right leg
+  r_hip_yaw: 0.0
+  r_hip_roll: 0.0
+  r_hip_pitch: -0.35
+  r_knee_pitch: 0.70
+  r_ankle_pitch: -0.35
+  r_ankle_roll: 0.0
+
+  # Waist
+  waist_yaw: 0.0
+  waist_pitch: 0.0
+  waist_roll: 0.0
+
+  # Left arm
+  l_shoulder_pitch: 0.2
+  l_shoulder_roll: 0.4
+  l_shoulder_yaw: 0.0
+  l_elbow_pitch: -0.8
+  l_wrist_yaw: 0.0
+  l_wrist_pitch: 0.0
+  l_wrist_roll: 0.0
+
+  # Right arm
+  r_shoulder_pitch: 0.2
+  r_shoulder_roll: -0.4
+  r_shoulder_yaw: 0.0
+  r_elbow_pitch: -0.8
+  r_wrist_yaw: 0.0
+  r_wrist_pitch: 0.0
+  r_wrist_roll: 0.0
+
+  # Head
+  head_yaw: 0.0
+  head_pitch: 0.0

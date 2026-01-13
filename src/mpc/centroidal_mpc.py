@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 """
 Centroidal Model Predictive Control for Humanoid Locomotion
-Real-time optimization for contact force planning
+Real-time optimization for contact force planning using convex QP
+
+Author: Al Numan
 """
 
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Tuple, Optional
 from enum import Enum
 import time
+import yaml
+from pathlib import Path
+
+from .mpc_formulation import ConvexMPCFormulation, MPCWeights
+from .gait_scheduler import AdvancedGaitScheduler, GaitPattern
 
 
 class ContactState(Enum):
@@ -20,24 +27,32 @@ class ContactState(Enum):
 @dataclass
 class RobotParams:
     """Robot physical parameters"""
-    mass: float = 47.0  # kg
-    gravity: float = 9.81  # m/s^2
-    standing_height: float = 1.0  # m
+    mass: float = 47.0                    # kg
+    gravity: float = 9.81                 # m/s^2
+    standing_height: float = 1.0          # m
     foot_size: Tuple[float, float] = (0.15, 0.08)  # length, width
-    max_force: float = 500.0  # N per foot
+    max_force: float = 500.0              # N per foot
     friction_coefficient: float = 0.6
+    hip_width: float = 0.2               # Distance between feet
+    inertia: np.ndarray = None           # 3x3 rotational inertia
+
+    def __post_init__(self):
+        if self.inertia is None:
+            # Approximate inertia for humanoid
+            self.inertia = np.diag([5.0, 5.0, 1.0])
 
 
 @dataclass
 class MPCConfig:
-    """MPC configuration"""
-    horizon: int = 10  # prediction steps
-    dt: float = 0.02  # timestep (50 Hz)
+    """MPC configuration parameters"""
+    horizon: int = 10                     # prediction steps
+    dt: float = 0.02                      # timestep (50 Hz)
 
-    # State weights [x, y, z, roll, pitch, yaw, vx, vy, vz, wx, wy, wz]
+    # State tracking weights [x, y, z]
     Q_pos: np.ndarray = None
     Q_vel: np.ndarray = None
     Q_ori: np.ndarray = None
+    Q_ang_vel: np.ndarray = None
 
     # Control weights
     R_force: float = 1e-5
@@ -47,127 +62,168 @@ class MPCConfig:
         if self.Q_pos is None:
             self.Q_pos = np.array([10.0, 10.0, 100.0])
         if self.Q_vel is None:
-            self.Q_vel = np.array([1.0, 1.0, 1.0])
+            self.Q_vel = np.array([2.0, 2.0, 10.0])
         if self.Q_ori is None:
-            self.Q_ori = np.array([100.0, 100.0, 10.0])  # roll, pitch, yaw
+            self.Q_ori = np.array([50.0, 50.0, 10.0])
+        if self.Q_ang_vel is None:
+            self.Q_ang_vel = np.array([1.0, 1.0, 5.0])
+
+    @classmethod
+    def from_yaml(cls, filepath: str) -> 'MPCConfig':
+        """Load configuration from YAML file"""
+        with open(filepath, 'r') as f:
+            cfg = yaml.safe_load(f)
+
+        mpc_cfg = cfg.get('mpc', {})
+        weights = mpc_cfg.get('weights', {})
+
+        return cls(
+            horizon=mpc_cfg.get('horizon', 10),
+            dt=mpc_cfg.get('dt', 0.02),
+            Q_pos=np.array(weights.get('position', [10.0, 10.0, 100.0])),
+            Q_vel=np.array(weights.get('velocity', [2.0, 2.0, 10.0])),
+            Q_ori=np.array(weights.get('orientation', [50.0, 50.0, 10.0])),
+            Q_ang_vel=np.array(weights.get('angular_velocity', [1.0, 1.0, 5.0])),
+            R_force=weights.get('force', 1e-5),
+            R_force_rate=weights.get('force_rate', 1e-4)
+        )
 
 
 @dataclass
 class State:
     """Robot centroidal state"""
-    position: np.ndarray  # (3,) CoM position
-    velocity: np.ndarray  # (3,) CoM velocity
-    orientation: np.ndarray  # (3,) roll, pitch, yaw
+    position: np.ndarray       # (3,) CoM position [x, y, z]
+    velocity: np.ndarray       # (3,) CoM velocity
+    orientation: np.ndarray    # (3,) Euler angles [roll, pitch, yaw]
     angular_velocity: np.ndarray  # (3,) body angular velocity
 
     @classmethod
     def zero(cls) -> 'State':
+        """Create zero state at nominal height"""
         return cls(
-            position=np.zeros(3),
+            position=np.array([0.0, 0.0, 1.0]),
             velocity=np.zeros(3),
             orientation=np.zeros(3),
             angular_velocity=np.zeros(3)
         )
 
     def to_vector(self) -> np.ndarray:
+        """Convert to 12D state vector"""
         return np.concatenate([
-            self.position, self.velocity,
-            self.orientation, self.angular_velocity
+            self.position,
+            self.orientation,
+            self.velocity,
+            self.angular_velocity
         ])
 
     @classmethod
     def from_vector(cls, vec: np.ndarray) -> 'State':
+        """Create state from 12D vector"""
         return cls(
-            position=vec[0:3],
-            velocity=vec[3:6],
-            orientation=vec[6:9],
-            angular_velocity=vec[9:12]
+            position=vec[0:3].copy(),
+            orientation=vec[3:6].copy(),
+            velocity=vec[6:9].copy(),
+            angular_velocity=vec[9:12].copy()
+        )
+
+    def copy(self) -> 'State':
+        """Create a copy of this state"""
+        return State(
+            position=self.position.copy(),
+            velocity=self.velocity.copy(),
+            orientation=self.orientation.copy(),
+            angular_velocity=self.angular_velocity.copy()
         )
 
 
-class GaitScheduler:
-    """Gait timing and contact schedule"""
-
-    def __init__(
-        self,
-        stance_duration: float = 0.35,
-        swing_duration: float = 0.25,
-        phase_offset: float = 0.5  # For trot gait
-    ):
-        self.stance_duration = stance_duration
-        self.swing_duration = swing_duration
-        self.period = stance_duration + swing_duration
-        self.phase_offset = phase_offset
-
-        self.phase = 0.0  # Current gait phase [0, 1)
-
-    def update(self, dt: float):
-        """Update gait phase"""
-        self.phase = (self.phase + dt / self.period) % 1.0
-
-    def get_contact_schedule(self, horizon: int, dt: float) -> List[Dict[str, ContactState]]:
-        """
-        Get contact schedule for MPC horizon
-
-        Returns:
-            List of contact states for each timestep
-        """
-        schedule = []
-        phase = self.phase
-
-        for _ in range(horizon):
-            # Left foot
-            left_in_stance = phase < (self.stance_duration / self.period)
-
-            # Right foot (offset by phase_offset)
-            right_phase = (phase + self.phase_offset) % 1.0
-            right_in_stance = right_phase < (self.stance_duration / self.period)
-
-            schedule.append({
-                'left': ContactState.STANCE if left_in_stance else ContactState.SWING,
-                'right': ContactState.STANCE if right_in_stance else ContactState.SWING
-            })
-
-            phase = (phase + dt / self.period) % 1.0
-
-        return schedule
+@dataclass
+class MPCResult:
+    """MPC solution result"""
+    left_force: np.ndarray
+    right_force: np.ndarray
+    solve_time_ms: float
+    status: str
+    predicted_trajectory: Optional[List[State]] = None
 
 
 class CentroidalMPC:
     """
-    Centroidal Model Predictive Control
+    Centroidal Model Predictive Control for Humanoid Robots
 
-    Solves for optimal contact forces to track desired CoM trajectory
-    using simplified centroidal dynamics.
+    Optimizes contact forces to track desired CoM motion using
+    simplified centroidal dynamics and convex optimization.
+
+    Features:
+    - Real-time convex QP solving with OSQP
+    - Multiple gait patterns support
+    - Friction cone constraints
+    - Warm starting for faster solve times
     """
 
     def __init__(
         self,
         robot_params: RobotParams = None,
-        config: MPCConfig = None
+        config: MPCConfig = None,
+        gait: GaitPattern = GaitPattern.WALK
     ):
+        """
+        Initialize Centroidal MPC
+
+        Args:
+            robot_params: Robot physical parameters
+            config: MPC configuration
+            gait: Initial gait pattern
+        """
         self.robot = robot_params or RobotParams()
         self.config = config or MPCConfig()
 
-        self.gait = GaitScheduler()
+        # Initialize gait scheduler
+        self.gait = AdvancedGaitScheduler(gait=gait, dt=self.config.dt)
 
-        # State and control dimensions
-        self.nx = 12  # [pos(3), vel(3), ori(3), ang_vel(3)]
-        self.nu = 12  # [f_left(3), f_right(3), tau_left(3), tau_right(3)]
+        # Initialize QP solver
+        self.qp_solver = ConvexMPCFormulation(
+            mass=self.robot.mass,
+            gravity=self.robot.gravity,
+            inertia=self.robot.inertia,
+            horizon=self.config.horizon,
+            dt=self.config.dt,
+            weights=MPCWeights(
+                position=self.config.Q_pos,
+                velocity=self.config.Q_vel,
+                orientation=self.config.Q_ori,
+                angular_velocity=self.config.Q_ang_vel,
+                force=self.config.R_force
+            )
+        )
 
-        # Desired command
+        # State dimensions
+        self.nx = 12  # [pos(3), ori(3), vel(3), ang_vel(3)]
+        self.nu = 6   # [f_left(3), f_right(3)]
+
+        # Velocity commands
         self.cmd_vel_x = 0.0
         self.cmd_vel_y = 0.0
         self.cmd_yaw_rate = 0.0
 
-        # Foot positions (body frame)
+        # Foot positions relative to CoM (body frame)
+        half_width = self.robot.hip_width / 2
+        self.nominal_foot_positions = {
+            'left': np.array([0.0, half_width, -self.robot.standing_height]),
+            'right': np.array([0.0, -half_width, -self.robot.standing_height])
+        }
+
+        # Current foot positions (world frame)
         self.foot_positions = {
-            'left': np.array([0.0, 0.1, 0.0]),
-            'right': np.array([0.0, -0.1, 0.0])
+            'left': np.array([0.0, half_width, 0.0]),
+            'right': np.array([0.0, -half_width, 0.0])
         }
 
         # Previous solution for warm starting
-        self.prev_forces = None
+        self.prev_solution = None
+
+        # Statistics
+        self.solve_count = 0
+        self.total_solve_time = 0.0
 
     def set_command(
         self,
@@ -175,286 +231,207 @@ class CentroidalMPC:
         vy: float = 0.0,
         yaw_rate: float = 0.0
     ):
-        """Set velocity command"""
+        """
+        Set velocity command
+
+        Args:
+            vx: Forward velocity (m/s)
+            vy: Lateral velocity (m/s)
+            yaw_rate: Yaw rate (rad/s)
+        """
         self.cmd_vel_x = vx
         self.cmd_vel_y = vy
         self.cmd_yaw_rate = yaw_rate
 
-    def get_desired_trajectory(
+    def set_gait(self, gait: GaitPattern, immediate: bool = False):
+        """
+        Set gait pattern
+
+        Args:
+            gait: Target gait pattern
+            immediate: If True, switch immediately
+        """
+        self.gait.set_gait(gait, immediate)
+
+    def update_foot_positions(self, positions: Dict[str, np.ndarray]):
+        """Update current foot positions in world frame"""
+        self.foot_positions = {
+            k: v.copy() for k, v in positions.items()
+        }
+
+    def get_reference_trajectory(
         self,
-        current_state: State,
-        horizon: int
-    ) -> List[State]:
-        """Generate desired trajectory from current state and command"""
+        current_state: State
+    ) -> List[np.ndarray]:
+        """
+        Generate reference trajectory from velocity command
+
+        Args:
+            current_state: Current robot state
+
+        Returns:
+            List of reference state vectors for MPC horizon
+        """
         trajectory = []
-        state = State(
-            position=current_state.position.copy(),
-            velocity=np.array([self.cmd_vel_x, self.cmd_vel_y, 0.0]),
-            orientation=current_state.orientation.copy(),
-            angular_velocity=np.array([0.0, 0.0, self.cmd_yaw_rate])
-        )
+        pos = current_state.position.copy()
+        ori = current_state.orientation.copy()
+        vel = np.array([self.cmd_vel_x, self.cmd_vel_y, 0.0])
+        ang_vel = np.array([0.0, 0.0, self.cmd_yaw_rate])
 
-        for i in range(horizon):
-            # Update position based on velocity
-            state.position = state.position + state.velocity * self.config.dt
-            state.position[2] = self.robot.standing_height  # Maintain height
+        for k in range(self.config.horizon):
+            # Propagate position
+            pos = pos + vel * self.config.dt
+            pos[2] = self.robot.standing_height  # Maintain height
 
-            # Update orientation
-            state.orientation[2] += self.cmd_yaw_rate * self.config.dt
+            # Propagate orientation
+            ori = ori + ang_vel * self.config.dt
 
-            trajectory.append(State(
-                position=state.position.copy(),
-                velocity=state.velocity.copy(),
-                orientation=state.orientation.copy(),
-                angular_velocity=state.angular_velocity.copy()
-            ))
+            # Build reference state vector
+            x_ref = np.concatenate([pos, ori, vel, ang_vel])
+            trajectory.append(x_ref)
 
         return trajectory
 
-    def build_dynamics_matrices(
+    def get_contact_positions_relative(
         self,
-        contact_schedule: List[Dict[str, ContactState]]
-    ) -> Tuple[np.ndarray, np.ndarray]:
+        current_state: State
+    ) -> List[np.ndarray]:
         """
-        Build discrete-time dynamics matrices A, B
+        Get contact positions relative to CoM in world frame
 
-        Centroidal dynamics:
-        m * ddot_p = sum(f_i) + m * g
-        I * dot_omega = sum(r_i x f_i)
+        Args:
+            current_state: Current robot state
+
+        Returns:
+            List of contact positions [left, right]
         """
-        dt = self.config.dt
-        m = self.robot.mass
-        g = np.array([0, 0, -self.robot.gravity])
-
-        # Simplified inertia (assuming uniform density box)
-        I = np.diag([5.0, 5.0, 1.0])  # Approximate humanoid inertia
-        I_inv = np.linalg.inv(I)
-
-        # State transition matrix (linearized)
-        A = np.eye(self.nx)
-        A[0:3, 3:6] = np.eye(3) * dt  # position from velocity
-        A[6:9, 9:12] = np.eye(3) * dt  # orientation from angular velocity
-
-        # Control matrix
-        B = np.zeros((self.nx, self.nu))
-
-        # Velocity from force: dv = (1/m) * f * dt
-        B[3:6, 0:3] = np.eye(3) * dt / m  # left foot force
-        B[3:6, 3:6] = np.eye(3) * dt / m  # right foot force
-
-        # Angular velocity from torque: domega = I^-1 * tau * dt
-        B[9:12, 6:9] = I_inv * dt  # left foot torque
-        B[9:12, 9:12] = I_inv * dt  # right foot torque
-
-        return A, B
+        com = current_state.position
+        return [
+            self.foot_positions['left'] - com,
+            self.foot_positions['right'] - com
+        ]
 
     def solve(
         self,
         current_state: State,
         foot_positions: Optional[Dict[str, np.ndarray]] = None
-    ) -> Dict[str, np.ndarray]:
+    ) -> MPCResult:
         """
-        Solve MPC optimization problem
+        Solve MPC optimization
 
         Args:
-            current_state: Current robot state
+            current_state: Current robot centroidal state
             foot_positions: Optional foot positions in world frame
 
         Returns:
-            Dict with optimal forces for each foot
+            MPCResult with optimal forces
         """
         start_time = time.time()
 
         # Update foot positions if provided
         if foot_positions:
-            self.foot_positions = foot_positions
+            self.update_foot_positions(foot_positions)
+
+        # Get reference trajectory
+        x_ref = self.get_reference_trajectory(current_state)
 
         # Get contact schedule
-        contact_schedule = self.gait.get_contact_schedule(
+        contact_schedule_raw = self.gait.get_contact_schedule(
             self.config.horizon, self.config.dt
         )
 
-        # Get desired trajectory
-        desired_trajectory = self.get_desired_trajectory(
-            current_state, self.config.horizon
+        # Convert to list of lists for solver
+        contact_schedule = [
+            [cs['left'], cs['right']]
+            for cs in contact_schedule_raw
+        ]
+
+        # Get contact positions relative to CoM
+        contact_positions = self.get_contact_positions_relative(current_state)
+
+        # Current state vector
+        x0 = current_state.to_vector()
+
+        # Solve QP
+        result = self.qp_solver.solve(
+            x0=x0,
+            x_ref=x_ref,
+            contact_positions=contact_positions,
+            contact_schedule=contact_schedule,
+            warm_start=self.prev_solution
         )
 
-        # Build dynamics
-        A, B = self.build_dynamics_matrices(contact_schedule)
-
-        # Build QP problem
-        # For simplicity, using a basic QP formulation
-        # In practice, would use OSQP or similar solver
-
-        H = self.config.horizon
-
-        # Cost matrices
-        Q = np.diag(np.concatenate([
-            self.config.Q_pos,
-            self.config.Q_vel,
-            self.config.Q_ori,
-            np.ones(3)  # angular velocity
-        ]))
-
-        R = np.eye(self.nu) * self.config.R_force
-
-        # Solve using simple gradient descent (simplified)
-        # Real implementation would use QP solver
-        forces = self._solve_qp_simplified(
-            current_state, desired_trajectory,
-            contact_schedule, A, B, Q, R
-        )
+        # Store solution for warm starting
+        if result['full_solution'] is not None:
+            self.prev_solution = result['full_solution']
 
         solve_time = (time.time() - start_time) * 1000
 
-        # Store for warm start
-        self.prev_forces = forces
+        # Update statistics
+        self.solve_count += 1
+        self.total_solve_time += solve_time
 
-        return {
-            'left_force': forces[0:3],
-            'right_force': forces[3:6],
-            'left_torque': forces[6:9],
-            'right_torque': forces[9:12],
-            'solve_time_ms': solve_time
-        }
+        # Extract forces
+        forces = result['forces']
+        left_force = forces[0:3]
+        right_force = forces[3:6]
 
-    def _solve_qp_simplified(
-        self,
-        current_state: State,
-        desired_trajectory: List[State],
-        contact_schedule: List[Dict[str, ContactState]],
-        A: np.ndarray,
-        B: np.ndarray,
-        Q: np.ndarray,
-        R: np.ndarray
-    ) -> np.ndarray:
+        # Apply contact mask
+        if not contact_schedule[0][0]:  # Left foot swing
+            left_force = np.zeros(3)
+        if not contact_schedule[0][1]:  # Right foot swing
+            right_force = np.zeros(3)
+
+        return MPCResult(
+            left_force=left_force,
+            right_force=right_force,
+            solve_time_ms=solve_time,
+            status=result['status']
+        )
+
+    def update(self, dt: Optional[float] = None):
         """
-        Simplified QP solution using iterative method
-
-        Real implementation would use OSQP, qpOASES, or similar
-        """
-        # Initial guess
-        if self.prev_forces is not None:
-            u = self.prev_forces.copy()
-        else:
-            # Start with gravity compensation
-            f_gravity = self.robot.mass * self.robot.gravity / 2
-            u = np.array([0, 0, f_gravity, 0, 0, f_gravity, 0, 0, 0, 0, 0, 0])
-
-        # Simple gradient descent
-        learning_rate = 0.01
-        num_iters = 50
-
-        x = current_state.to_vector()
-
-        for _ in range(num_iters):
-            # Predict state
-            x_pred = A @ x + B @ u
-
-            # Desired state at first step
-            x_des = desired_trajectory[0].to_vector()
-
-            # Cost gradient
-            state_error = x_pred - x_des
-            grad_state = B.T @ Q @ state_error
-            grad_control = R @ u
-
-            grad = grad_state + grad_control
-
-            # Update
-            u = u - learning_rate * grad
-
-            # Apply contact constraints
-            for i, (foot, contact) in enumerate([('left', 0), ('right', 3)]):
-                if contact_schedule[0][foot] == ContactState.SWING:
-                    u[i:i+3] = 0  # No force during swing
-                else:
-                    # Friction cone constraint
-                    fz = u[i+2]
-                    fz = max(fz, 10.0)  # Minimum normal force
-                    fz = min(fz, self.robot.max_force)
-                    u[i+2] = fz
-
-                    fx_max = self.robot.friction_coefficient * fz
-                    fy_max = self.robot.friction_coefficient * fz
-
-                    u[i] = np.clip(u[i], -fx_max, fx_max)
-                    u[i+1] = np.clip(u[i+1], -fy_max, fy_max)
-
-        return u
-
-    def update_gait(self, dt: float):
-        """Update gait phase"""
-        self.gait.update(dt)
-
-
-class WholeBodyController:
-    """
-    Whole-Body Controller using Task-Space Inverse Dynamics
-
-    Converts MPC contact forces to joint torques while satisfying constraints.
-    """
-
-    def __init__(
-        self,
-        robot_model: str = "h1",
-        num_joints: int = 19
-    ):
-        self.robot_model = robot_model
-        self.num_joints = num_joints
-
-        # Task weights
-        self.task_weights = {
-            'com_tracking': 100.0,
-            'swing_foot': 50.0,
-            'torso_orientation': 30.0,
-            'joint_regularization': 1.0
-        }
-
-        # Gains
-        self.kp_com = np.array([100, 100, 100])
-        self.kd_com = np.array([20, 20, 20])
-        self.kp_foot = np.array([200, 200, 200])
-        self.kd_foot = np.array([40, 40, 40])
-
-    def solve(
-        self,
-        current_state: Dict,
-        contact_forces: Dict[str, np.ndarray],
-        desired_com: np.ndarray,
-        desired_foot_poses: Dict[str, np.ndarray]
-    ) -> np.ndarray:
-        """
-        Solve for joint torques
+        Update internal state (gait phase)
 
         Args:
-            current_state: Current robot state (joint positions, velocities, etc.)
-            contact_forces: Optimal contact forces from MPC
-            desired_com: Desired CoM position
-            desired_foot_poses: Desired swing foot poses
-
-        Returns:
-            Joint torques (num_joints,)
+            dt: Time step (uses config dt if None)
         """
-        # Placeholder - would use Pinocchio for actual inverse dynamics
-        torques = np.zeros(self.num_joints)
+        self.gait.update(dt or self.config.dt)
 
-        # In practice:
-        # 1. Compute task-space accelerations from PD control
-        # 2. Stack tasks with priorities
-        # 3. Solve constrained QP for accelerations
-        # 4. Use inverse dynamics to get torques
+    def get_statistics(self) -> Dict:
+        """Get solver statistics"""
+        return {
+            'solve_count': self.solve_count,
+            'total_solve_time_ms': self.total_solve_time,
+            'avg_solve_time_ms': (
+                self.total_solve_time / self.solve_count
+                if self.solve_count > 0 else 0.0
+            )
+        }
 
-        return torques
+    def reset(self):
+        """Reset MPC state"""
+        self.prev_solution = None
+        self.solve_count = 0
+        self.total_solve_time = 0.0
+        self.gait = AdvancedGaitScheduler(
+            gait=self.gait.current_gait,
+            dt=self.config.dt
+        )
 
 
-def main():
-    """Demo of Centroidal MPC"""
-    print("Centroidal MPC Demo")
-    print("=" * 40)
+def demo():
+    """Demonstration of Centroidal MPC"""
+    print("=" * 60)
+    print("Centroidal MPC Demo - Humanoid Locomotion")
+    print("=" * 60)
 
-    # Initialize MPC
-    mpc = CentroidalMPC()
+    # Create MPC controller
+    robot = RobotParams(mass=47.0, standing_height=1.0)
+    config = MPCConfig(horizon=10, dt=0.02)
+    mpc = CentroidalMPC(robot_params=robot, config=config)
+
+    # Set walking command
     mpc.set_command(vx=0.5, vy=0.0, yaw_rate=0.1)
 
     # Initial state
@@ -465,30 +442,56 @@ def main():
         angular_velocity=np.array([0.0, 0.0, 0.0])
     )
 
-    # Simulation
+    print(f"\nRobot mass: {robot.mass} kg")
+    print(f"Standing height: {robot.standing_height} m")
+    print(f"MPC horizon: {config.horizon}")
+    print(f"Timestep: {config.dt*1000:.0f} ms")
+    print(f"\nCommand: vx={mpc.cmd_vel_x} m/s, yaw_rate={mpc.cmd_yaw_rate} rad/s")
+    print("\n" + "-" * 60)
+
+    # Simulation loop
     dt = 0.02
-    for i in range(100):
+    for step in range(100):
         # Solve MPC
         result = mpc.solve(state)
 
         # Update gait
-        mpc.update_gait(dt)
+        mpc.update(dt)
 
-        if i % 10 == 0:
-            print(f"Step {i}:")
-            print(f"  Left force: [{result['left_force'][0]:.1f}, "
-                  f"{result['left_force'][1]:.1f}, {result['left_force'][2]:.1f}]")
-            print(f"  Right force: [{result['right_force'][0]:.1f}, "
-                  f"{result['right_force'][1]:.1f}, {result['right_force'][2]:.1f}]")
-            print(f"  Solve time: {result['solve_time_ms']:.2f} ms")
+        # Print results every 10 steps
+        if step % 10 == 0:
+            print(f"\nStep {step:3d}:")
+            print(f"  Position: [{state.position[0]:.3f}, "
+                  f"{state.position[1]:.3f}, {state.position[2]:.3f}]")
+            print(f"  Velocity: [{state.velocity[0]:.3f}, "
+                  f"{state.velocity[1]:.3f}, {state.velocity[2]:.3f}]")
+            print(f"  Left force:  [{result.left_force[0]:6.1f}, "
+                  f"{result.left_force[1]:6.1f}, {result.left_force[2]:6.1f}] N")
+            print(f"  Right force: [{result.right_force[0]:6.1f}, "
+                  f"{result.right_force[1]:6.1f}, {result.right_force[2]:6.1f}] N")
+            print(f"  Solve time: {result.solve_time_ms:.2f} ms "
+                  f"({result.status})")
 
-        # Simple state update (would use full dynamics in practice)
-        total_force = result['left_force'] + result['right_force']
-        acceleration = total_force / mpc.robot.mass + np.array([0, 0, -mpc.robot.gravity])
+        # Simple dynamics update (would use full dynamics in practice)
+        total_force = result.left_force + result.right_force
+        gravity = np.array([0, 0, -robot.gravity * robot.mass])
+        net_force = total_force + gravity
 
+        acceleration = net_force / robot.mass
         state.velocity = state.velocity + acceleration * dt
         state.position = state.position + state.velocity * dt
 
+        # Keep at nominal height (simplified)
+        state.position[2] = max(state.position[2], 0.9)
+
+    # Print statistics
+    stats = mpc.get_statistics()
+    print("\n" + "=" * 60)
+    print("Statistics:")
+    print(f"  Total solves: {stats['solve_count']}")
+    print(f"  Average solve time: {stats['avg_solve_time_ms']:.2f} ms")
+    print("=" * 60)
+
 
 if __name__ == "__main__":
-    main()
+    demo()
